@@ -1,13 +1,17 @@
 {
-  "name": "x-respect-app-vercel-full",
-  "version": "2.1.0",
-  "private": true,
-  "main": "server.js",
+  "name": "mini-x-vercel",
+  "version": "1.0.0",
+  "description": "Mini X Twitter Clone for Vercel",
+  "main": "api/index.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node api/index.js"
   },
   "dependencies": {
     "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
     "googleapis": "^134.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
