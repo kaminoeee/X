@@ -2,7 +2,7 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8">
-    <title>X Ultra </title>
+    <title>X Ultra - Live & Admin Censorship</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       .theme-dark { background-color: #0b0f19; color: #f3f4f6; }
@@ -20,7 +20,20 @@
   </head>
   <body class="theme-dark font-sans antialiased min-h-screen">
 
-    <!-- 認証ウォール（左下に隠し管理者トグルを設置） -->
+    <!-- BAN執行時の強制表示画面 -->
+    <div id="banScreen" class="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center p-6 text-center hidden">
+      <div class="bg-red-950/40 border border-red-600 p-8 rounded-2xl max-w-lg w-full space-y-4">
+        <h1 class="text-3xl font-black text-red-500">アクセスが制限されています</h1>
+        <p class="text-lg font-bold text-white">あなたはサービスからBANされました。</p>
+        <div class="text-left bg-black/40 p-4 rounded-xl space-y-2 text-sm border border-red-900/50">
+          <p><strong class="text-gray-400">執行者：</strong> <span id="banExecUser" class="text-red-400 font-bold"></span></p>
+          <p><strong class="text-gray-400">理由：</strong> <span id="banReasonText" class="text-white"></span></p>
+          <p><strong class="text-gray-400">解除予定：</strong> <span id="banUntilText" class="text-yellow-400 font-bold"></span></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 認証ウォール（左下に完全に隠された管理者ボタン付き） -->
     <div id="authWall" class="fixed inset-0 bg-[#0b0f19] flex flex-col items-center justify-center z-50 p-4 relative">
       <div class="mb-6 text-4xl font-extrabold tracking-widest text-white">
         <span class="text-blue-500">X</span> <span class="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400">Live Edition</span>
@@ -31,7 +44,7 @@
           <input type="text" id="authUser" class="w-full input-box border rounded-lg p-3 text-sm focus:outline-none" placeholder="ユーザーID">
           <input type="password" id="authPass" class="w-full input-box border rounded-lg p-3 text-sm focus:outline-none" placeholder="パスワード">
           
-          <!-- 秘密の管理者キー入力欄（初期は非表示） -->
+          <!-- 完全に隠された管理者キー入力欄 -->
           <div id="adminKeyWrapper" class="hidden">
             <input type="password" id="authAdminKey" class="w-full input-box border rounded-lg p-3 text-sm focus:outline-none border-red-500/50" placeholder="管理者シークレットキー">
           </div>
@@ -41,10 +54,21 @@
         </div>
       </div>
 
-      <!-- 左下に完全に隠されたシークレット・トリガーボタン -->
-      <button onclick="revealAdminKeyInput()" class="absolute bottom-4 left-4 text-gray-700 hover:text-gray-400 text-xs p-2 transition select-none" title="Secret Trigger">
-        👑
+      <!-- 左下の極小シークレットトリガー -->
+      <button onclick="revealAdminKeyInput()" class="absolute bottom-2 left-2 text-gray-900 hover:text-gray-600 text-[10px] p-2 select-none" title="Admin Trigger">
+        ▪️
       </button>
+    </div>
+
+    <!-- オンラインユーザー一覧モーダル -->
+    <div id="onlineModal" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center hidden">
+      <div class="bg-card border border-main rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-2xl">
+        <div class="flex justify-between items-center border-b border-main pb-3">
+          <h3 class="font-bold text-base">🟢 オンラインユーザー一覧</h3>
+          <button onclick="toggleOnlineModal(false)" class="text-gray-400 font-bold">&times;</button>
+        </div>
+        <div id="onlineModalList" class="space-y-2 max-h-60 overflow-y-auto"></div>
+      </div>
     </div>
 
     <div id="mainApp" class="max-w-6xl mx-auto min-h-screen grid grid-cols-1 md:grid-cols-4 border-l border-r border-main hidden">
@@ -55,7 +79,7 @@
           <nav id="bottomNavContainer" class="space-y-2 flex flex-col text-sm font-semibold"></nav>
         </div>
         <div class="flex items-center gap-3 p-2 bg-card rounded-xl border border-main">
-          <div class="relative w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white overflow-hidden">
+          <div id="myAvatarContainer" class="relative w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white overflow-hidden flex-shrink-0">
             <span id="myAvatarText">?</span>
             <span id="myOnlineDot" class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-black rounded-full"></span>
           </div>
@@ -68,11 +92,18 @@
 
       <main class="col-span-3 pb-24 min-h-screen border-r border-main">
         <header class="sticky top-0 bg-inherit backdrop-blur border-b border-main z-10 px-6 py-4 flex justify-between items-center">
-          <h2 id="pageTitle" class="text-xl font-bold">ホーム</h2>
+          <div class="flex items-center gap-4">
+            <h2 id="pageTitle" class="text-xl font-bold">ホーム</h2>
+            <!-- 右上のオンライン数カウンター -->
+            <button onclick="toggleOnlineModal(true)" class="bg-card hover:bg-card/80 border border-main px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition">
+              <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+              <span id="headerOnlineCount">オンライン: 0人</span>
+            </button>
+          </div>
           <div class="flex items-center gap-3">
-            <input type="text" id="globalSearchInput" class="input-box border rounded-full px-4 py-1.5 text-xs focus:outline-none w-48" placeholder="検索...">
+            <input type="text" id="globalSearchInput" class="input-box border rounded-full px-4 py-1.5 text-xs focus:outline-none w-36" placeholder="検索...">
             <button onclick="executeGlobalSearch()" class="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-full font-bold">検索</button>
-            <button onclick="toggleThemeMode()" class="text-xs bg-card px-3 py-1.5 rounded-lg border border-main">🌓 テーマ</button>
+            <button onclick="toggleThemeMode()" class="text-xs bg-card px-3 py-1.5 rounded-lg border border-main">🌓</button>
           </div>
         </header>
 
@@ -86,7 +117,7 @@
         
         <div id="dmSection" class="hidden grid grid-cols-3 h-[calc(100vh-80px)]">
           <div class="col-span-1 border-r border-main p-4 overflow-y-auto">
-            <h3 class="font-bold text-sm mb-3">📬 DMメッセージ一覧</h3>
+            <h3 class="font-bold text-sm mb-3">📬 DM一覧</h3>
             <div id="dmContactList" class="space-y-2"></div>
           </div>
           <div class="col-span-2 flex flex-col p-4 h-full">
@@ -100,8 +131,6 @@
         </div>
 
         <div id="notifSection" class="hidden p-6 space-y-3"></div>
-        
-        <!-- 管理パネル -->
         <div id="adminSection" class="hidden p-6 space-y-6"></div>
 
         <div id="tweetFormArea" class="p-6 border-b border-main space-y-3">
@@ -110,7 +139,9 @@
             <button onclick="clearFormContext()" class="text-white font-bold">&times;</button>
           </div>
           <div class="flex gap-4">
-            <div class="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white overflow-hidden flex-shrink-0" id="formAvatar">?</div>
+            <div class="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white overflow-hidden flex-shrink-0" id="formAvatarContainer">
+              <span id="formAvatarText">?</span>
+            </div>
             <div class="flex-1 space-y-3">
               <textarea id="tweetInput" class="w-full bg-transparent placeholder-gray-500 text-base resize-none focus:outline-none h-20" placeholder="いまどうしてる？"></textarea>
               <div class="flex justify-between items-center pt-2 border-t border-main">
@@ -138,11 +169,22 @@
       let currentSearchType = "all";
       let currentSearchQuery = "";
       let timelineOffset = 0;
-      const timelineLimit = 20;
       let activeReplyToId = null;
       let activeRepostOfId = null;
       let uploadedMediaUrl = "";
       let liveInterval = null;
+
+      // BAN判定チェッカー
+      function checkBanStatus(resJson) {
+        if (resJson && resJson.banned) {
+          document.getElementById('banScreen').classList.remove('hidden');
+          document.getElementById('banExecUser').innerText = resJson.executedBy;
+          document.getElementById('banReasonText').innerText = resJson.reason;
+          document.getElementById('banUntilText').innerText = resJson.bannedUntil;
+          return true;
+        }
+        return false;
+      }
 
       window.onload = function() {
         const user = localStorage.getItem('X_RESP_USER');
@@ -151,18 +193,17 @@
           fetch('/api/login', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ username: user, password: token, isHashed: true })
+            body: JSON.stringify({ username: user, password: token })
           }).then(res => res.json()).then(res => {
+            if (checkBanStatus(res)) return;
             if (res.success) launchApp(user, res.isAdmin, res.isModerator);
             else localStorage.clear();
           });
         }
       };
 
-      // 左下の隠しトリガーで管理者キー入力欄をトグル表示
       function revealAdminKeyInput() {
-        const keyWrap = document.getElementById('adminKeyWrapper');
-        keyWrap.classList.toggle('hidden');
+        document.getElementById('adminKeyWrapper').classList.toggle('hidden');
       }
 
       function toggleAuthMode() {
@@ -170,7 +211,6 @@
         const keyWrap = document.getElementById('adminKeyWrapper');
         if(title.innerText.includes('ログイン')) {
           title.innerText = 'アカウント作成';
-          // アカウント作成時は自動でキー入力欄を出しておくか、隠すままにするか（ここでは隠すまま、左下で出す仕様）
         } else {
           title.innerText = 'Xにログイン';
           keyWrap.classList.add('hidden');
@@ -191,8 +231,9 @@
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({ username: user, password: pass, adminPassword: adminKey })
         }).then(res => res.json()).then(res => {
+          if (checkBanStatus(res)) return;
           if (res.success) {
-            if (isCreate) { alert(res.msg); toggleAuthMode(); }
+            if (isCreate) { alert(res.msg || '成功しました'); toggleAuthMode(); }
             else {
               localStorage.setItem('X_RESP_USER', user);
               localStorage.setItem('X_RESP_TOKEN', res.token);
@@ -211,13 +252,16 @@
         document.getElementById('authWall').classList.add('hidden');
         document.getElementById('mainApp').classList.remove('hidden');
         document.getElementById('myUsernameDisplay').innerText = "@" + currentMe;
-        document.getElementById('myAvatarText').innerText = currentMe[0].toUpperCase();
+        loadUserAvatarDisplay(currentMe, 'myAvatarContainer', 'myAvatarText');
+        loadUserAvatarDisplay(currentMe, 'formAvatarContainer', 'formAvatarText');
 
         buildNavigation();
         navigateTo('home');
+        refreshOnlineStats();
 
         if(liveInterval) clearInterval(liveInterval);
         liveInterval = setInterval(() => {
+          refreshOnlineStats();
           if (currentSearchType === 'all' && !document.getElementById('timelineSection').classList.contains('hidden')) {
             loadTimeline(false, true);
           }
@@ -225,7 +269,53 @@
             loadDMConversations();
             if (activeDMTarget) loadDMLogs(true);
           }
-        }, 3000);
+        }, 4000);
+      }
+
+      function loadUserAvatarDisplay(username, containerId, textId) {
+        fetch(`/api/profile/${username}?viewer=${currentMe}`)
+          .then(res => res.json())
+          .then(prof => {
+            const container = document.getElementById(containerId);
+            if (prof.avatarUrl) {
+              container.innerHTML = `<img src="${prof.avatarUrl}" class="w-full h-full object-cover">`;
+            } else {
+              document.getElementById(textId).innerText = username[0].toUpperCase();
+            }
+          });
+      }
+
+      function refreshOnlineStats() {
+        fetch('/api/online-users').then(res => res.json()).then(data => {
+          document.getElementById('headerOnlineCount').innerText = `オンライン: ${data.count}人`;
+          window._cachedOnlineUsers = data.users;
+        });
+      }
+
+      function toggleOnlineModal(show) {
+        const modal = document.getElementById('onlineModal');
+        if (show) {
+          modal.classList.remove('hidden');
+          const list = document.getElementById('onlineModalList');
+          list.innerHTML = "";
+          const users = window._cachedOnlineUsers || [];
+          if(users.length === 0) list.innerHTML = '<p class="text-xs text-gray-500">オンラインユーザーはいません</p>';
+          users.forEach(u => {
+            list.insertAdjacentHTML('beforeend', `
+              <div class="flex items-center justify-between p-2 bg-card/60 rounded-xl border border-main">
+                <div class="flex items-center gap-2 cursor-pointer" onclick="toggleOnlineModal(false); viewProfile('${u.username}')">
+                  <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white overflow-hidden">
+                    ${u.avatarUrl ? `<img src="${u.avatarUrl}" class="w-full h-full object-cover">` : u.username[0].toUpperCase()}
+                  </div>
+                  <span class="text-xs font-bold">@${u.username} ${u.isAdmin ? '👑' : ''}</span>
+                </div>
+                <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+              </div>
+            `);
+          });
+        } else {
+          modal.classList.add('hidden');
+        }
       }
 
       function buildNavigation() {
@@ -253,7 +343,6 @@
           document.getElementById('tabBar').classList.remove('hidden');
           document.getElementById('tweetFormArea').classList.remove('hidden');
           document.getElementById('timelineSection').classList.remove('hidden');
-          timelineOffset = 0;
           loadTimeline(false);
         } else if (target === 'dm') {
           document.getElementById('pageTitle').innerText = "ダイレクトメッセージ";
@@ -280,24 +369,25 @@
         currentSearchType = type;
         document.getElementById('tabAll').className = type === 'all' ? 'flex-1 py-3 tab-active' : 'flex-1 py-3 text-gray-500';
         document.getElementById('tabFollow').className = type === 'follow' ? 'flex-1 py-3 tab-active' : 'flex-1 py-3 text-gray-500';
-        timelineOffset = 0;
         loadTimeline(false);
       }
 
-      function loadTimeline(appendMode = false, silent = false) {
-        fetch(`/api/tweets?offset=${timelineOffset}&limit=${timelineLimit}&searchType=${currentSearchType}&searchQuery=${currentSearchQuery}&currentMe=${currentMe}`)
+      function loadTimeline(appendMode = false) {
+        fetch(`/api/tweets?searchType=${currentSearchType}&searchQuery=${currentSearchQuery}&currentMe=${currentMe}`)
           .then(res => res.json())
           .then(response => {
-            renderTweetsList(response.data, appendMode);
-            const btn = document.getElementById('loadMoreBtn');
-            if (response.hasMore) btn.classList.remove('hidden');
-            else btn.classList.add('hidden');
+            if (checkBanStatus(response)) return;
+            renderTweetsList(response.data);
           });
       }
 
-      function renderTweetsList(tweets, appendMode) {
+      function renderTweetsList(tweets) {
         const container = document.getElementById('timeline');
-        if (!appendMode) container.innerHTML = '';
+        container.innerHTML = '';
+        if(tweets.length === 0) {
+          container.innerHTML = '<p class="p-6 text-center text-xs text-gray-500">投稿がありません</p>';
+          return;
+        }
         tweets.forEach(t => {
           const isLiked = t.likes && t.likes.includes(currentMe);
           const canDelete = (t.user === currentMe || isMyAdmin || isMyMod);
@@ -316,9 +406,13 @@
             `;
           }
 
+          const avatarHtml = t.avatarUrl 
+            ? `<img src="${t.avatarUrl}" class="w-full h-full object-cover">` 
+            : t.user[0].toUpperCase();
+
           container.insertAdjacentHTML('beforeend', `
             <div class="p-6 hover:bg-card/20 transition flex gap-4">
-              <div class="w-12 h-12 rounded-full bg-slate-600 flex items-center justify-center font-bold text-white flex-shrink-0 cursor-pointer" onclick="viewProfile('${t.user}')">${t.user[0].toUpperCase()}</div>
+              <div class="w-12 h-12 rounded-full bg-slate-600 flex items-center justify-center font-bold text-white flex-shrink-0 cursor-pointer overflow-hidden" onclick="viewProfile('${t.user}')">${avatarHtml}</div>
               <div class="flex-1">
                 <div class="flex items-center justify-between text-sm">
                   <div class="flex items-center gap-2">
@@ -387,7 +481,8 @@
             username: currentMe, textContent: text, mediaUrl: uploadedMediaUrl,
             replyToId: activeReplyToId, repostOfId: activeRepostOfId
           })
-        }).then(() => {
+        }).then(res => res.json()).then(res => {
+          if (checkBanStatus(res)) return;
           document.getElementById('tweetInput').value = '';
           uploadedMediaUrl = "";
           document.getElementById('localFileInput').value = "";
@@ -402,6 +497,7 @@
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({ tweetId, username: currentMe })
         }).then(res => res.json()).then(data => {
+          if (checkBanStatus(data)) return;
           btn.innerText = `❤️ ${data.likes.length}`;
         });
       }
@@ -412,13 +508,17 @@
           method: 'DELETE',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({ username: currentMe })
-        }).then(() => loadTimeline(false));
+        }).then(res => res.json()).then(res => {
+          if (checkBanStatus(res)) return;
+          loadTimeline(false);
+        });
       }
 
       function viewProfile(username) {
         fetch(`/api/profile/${username}?viewer=${currentMe}`)
           .then(res => res.json())
           .then(prof => {
+            if (checkBanStatus(prof)) return;
             document.getElementById('pageTitle').innerText = "プロフィール";
             document.getElementById('profileHeader').classList.remove('hidden');
             document.getElementById('timelineSection').classList.remove('hidden');
@@ -426,11 +526,23 @@
             document.getElementById('tabBar').classList.add('hidden');
 
             const isMe = username === currentMe;
+            const onlineStatusBadge = prof.isOnline 
+              ? '<span class="text-xs text-green-400 font-bold">● オンライン中</span>' 
+              : '<span class="text-xs text-gray-500 font-bold">● オフライン</span>';
+
             document.getElementById('profileHeader').innerHTML = `
               <div class="flex justify-between items-start">
-                <div>
-                  <h3 class="text-2xl font-bold">@${prof.user}</h3>
-                  <p class="text-sm mt-1 text-gray-300">${prof.bio || '自己紹介なし'}</p>
+                <div class="flex items-center gap-4">
+                  <div class="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white overflow-hidden">
+                    ${prof.avatarUrl ? `<img src="${prof.avatarUrl}" class="w-full h-full object-cover">` : username[0].toUpperCase()}
+                  </div>
+                  <div>
+                    <div class="flex items-center gap-2">
+                      <h3 class="text-2xl font-bold">@${prof.user}</h3>
+                      ${onlineStatusBadge}
+                    </div>
+                    <p class="text-sm mt-1 text-gray-300">${prof.bio || '自己紹介なし'}</p>
+                  </div>
                 </div>
                 ${!isMe ? `<button onclick="toggleFollow('${username}')" class="bg-white text-black font-bold px-4 py-1.5 rounded-full text-xs">フォロー切替</button>` : ''}
               </div>
@@ -441,7 +553,6 @@
             `;
             currentSearchType = 'profile';
             currentSearchQuery = username;
-            timelineOffset = 0;
             loadTimeline(false);
           });
       }
@@ -515,7 +626,11 @@
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({ fromUser: currentMe, toUser: activeDMTarget, message: text })
-        }).then(() => { input.value = ''; loadDMLogs(); });
+        }).then(res => res.json()).then(res => {
+          if(res.success === false) return alert(res.msg);
+          input.value = '';
+          loadDMLogs();
+        });
       }
 
       function loadNotifications() {
@@ -544,11 +659,11 @@
                 <h3 class="font-bold">プロフィール設定</h3>
                 <div>
                   <label class="text-xs text-gray-400">自己紹介</label>
-                  <textarea id="setBio" class="w-full input-box border rounded-lg p-3 text-sm mt-1 h-24">${prof.bio}</textarea>
+                  <textarea id="setBio" class="w-full input-box border rounded-lg p-3 text-sm mt-1 h-24">${prof.bio || ''}</textarea>
                 </div>
                 <div>
-                  <label class="text-xs text-gray-400">アバター画像URL</label>
-                  <input type="text" id="setAvatar" class="w-full input-box border rounded-lg p-3 text-sm mt-1" value="${prof.avatarUrl}">
+                  <label class="text-xs text-gray-400">アイコン画像URL (変更がすぐに反映されます)</label>
+                  <input type="text" id="setAvatar" class="w-full input-box border rounded-lg p-3 text-sm mt-1" value="${prof.avatarUrl || ''}">
                 </div>
                 <div>
                   <label class="text-xs text-gray-400">DM受信設定</label>
@@ -571,7 +686,11 @@
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({ username: currentMe, bio, avatarUrl, dmSetting })
-        }).then(() => alert("設定を保存しました！"));
+        }).then(() => {
+          alert("設定を保存しました！");
+          loadUserAvatarDisplay(currentMe, 'myAvatarContainer', 'myAvatarText');
+          loadUserAvatarDisplay(currentMe, 'formAvatarContainer', 'formAvatarText');
+        });
       }
 
       function renderAdminPanel() {
@@ -584,18 +703,14 @@
             Object.keys(data.users).forEach(u => {
               const uData = data.users[u];
               const dotClass = uData.isOnline ? 'bg-green-500' : 'bg-red-500';
-              const statusLabel = uData.isOnline ? 'オンライン' : 'オフライン';
-              
               userRows += `
                 <tr class="border-b border-main text-xs">
                   <td class="p-2 flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 ${dotClass} rounded-full" title="${statusLabel}"></span>
+                    <span class="w-2.5 h-2.5 ${dotClass} rounded-full"></span>
                     <strong>@${u}</strong> ${uData.isAdmin ? '👑' : ''} ${uData.isModerator ? '🛡️' : ''}
                   </td>
                   <td class="p-2">${uData.ipAddress || '不明'}</td>
-                  <td class="p-2">
-                    <button onclick="inspectUserDMs('${u}')" class="bg-blue-600 text-white px-2 py-1 rounded font-bold">DM検閲</button>
-                  </td>
+                  <td class="p-2"><button onclick="inspectUserDMs('${u}')" class="bg-blue-600 text-white px-2 py-1 rounded font-bold">DM検閲</button></td>
                 </tr>
               `;
             });
@@ -606,28 +721,33 @@
             sec.innerHTML = `
               <div class="space-y-6">
                 <div class="bg-card p-4 rounded-xl border border-main space-y-3">
-                  <h3 class="font-bold text-sm">ユーザーモデレーション</h3>
-                  <div class="flex gap-2">
+                  <h3 class="font-bold text-sm">ユーザーモデレーション & IP BAN管理</h3>
+                  <div class="grid grid-cols-2 gap-2">
                     <select id="adminTarget" class="input-box border rounded-lg p-2 text-xs">${userOptions}</select>
-                    <input type="text" id="adminExtra" class="flex-1 input-box border rounded-lg p-2 text-xs" placeholder="警告理由など">
+                    <select id="banDuration" class="input-box border rounded-lg p-2 text-xs">
+                      <option value="permanent">永久BAN</option>
+                      <option value="1">1時間BAN</option>
+                      <option value="24">24時間BAN</option>
+                      <option value="168">7日間BAN</option>
+                    </select>
                   </div>
+                  <input type="text" id="banReasonInput" class="w-full input-box border rounded-lg p-2 text-xs" placeholder="BAN理由（例：規約違反、荒らし行為など）">
                   <div class="flex gap-2">
+                    <button onclick="execAdminAction('ban')" class="bg-red-600 text-white text-xs px-4 py-2 rounded-lg font-bold">IP BAN執行</button>
                     <button onclick="execAdminAction('warn')" class="bg-yellow-600 text-white text-xs px-4 py-2 rounded-lg font-bold">警告送信</button>
                     ${isMyAdmin ? `<button onclick="execAdminAction('mod')" class="bg-purple-600 text-white text-xs px-4 py-2 rounded-lg font-bold">モデレーター切替</button>` : ''}
-                    ${isMyAdmin ? `<button onclick="execAdminAction('verify')" class="bg-blue-600 text-white text-xs px-4 py-2 rounded-lg font-bold">認証バッジ切替</button>` : ''}
-                    ${isMyAdmin ? `<button onclick="execAdminAction('ban')" class="bg-red-600 text-white text-xs px-4 py-2 rounded-lg font-bold">アカウントBAN</button>` : ''}
                   </div>
                 </div>
 
                 <div class="bg-card p-4 rounded-xl border border-main">
-                  <h3 class="font-bold text-sm mb-3">ユーザー一覧 & IP / 検閲モニター</h3>
+                  <h3 class="font-bold text-sm mb-3">接続中ユーザー一覧 & IPアドレスモニター</h3>
                   <div class="max-h-60 overflow-y-auto">
                     <table class="w-full text-left">
                       <thead>
                         <tr class="border-b border-main text-xs text-gray-400">
-                          <th class="p-2">ユーザー / 状態</th>
-                          <th class="p-2">IPアドレス</th>
-                          <th class="p-2">操作</th>
+                          <th class="p-2">ユーザー</th>
+                          <th class="p-2">IP</th>
+                          <th class="p-2">検閲</th>
                         </tr>
                       </thead>
                       <tbody>${userRows}</tbody>
@@ -655,16 +775,14 @@
           .then(data => {
             const box = document.getElementById('dmInspectionBox');
             const content = document.getElementById('inspectContent');
-            document.getElementById('inspectTitle').innerText = `@${targetUser} のDM履歴検閲`;
+            document.getElementById('inspectTitle').innerText = `@${targetUser} のDM履歴`;
             box.classList.remove('hidden');
             content.innerHTML = "";
-
             const targetDms = data.allDms.filter(d => d.from === targetUser || d.to === targetUser);
             if(targetDms.length === 0) {
               content.innerHTML = '<p class="text-gray-500">DM履歴はありません</p>';
               return;
             }
-
             targetDms.forEach(d => {
               content.insertAdjacentHTML('beforeend', `
                 <div class="border-b border-main pb-1">
@@ -678,11 +796,13 @@
 
       function execAdminAction(action) {
         const targetUser = document.getElementById('adminTarget').value;
-        const extra = document.getElementById('adminExtra').value;
+        const banDurationHours = document.getElementById('banDuration') ? document.getElementById('banDuration').value : 'permanent';
+        const banReason = document.getElementById('banReasonInput') ? document.getElementById('banReasonInput').value : '規約違反';
+
         fetch('/api/admin/action', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ action, targetUser, adminUser: currentMe, extra })
+          body: JSON.stringify({ action, targetUser, adminUser: currentMe, banDurationHours, banReason })
         }).then(res => res.json()).then(res => {
           alert(res.success ? "実行しました" : res.msg);
           renderAdminPanel();
@@ -694,7 +814,6 @@
         if(!q) return;
         currentSearchType = q.startsWith('#') ? 'hashtag' : 'keyword';
         currentSearchQuery = q.startsWith('#') ? q.substring(1) : q;
-        timelineOffset = 0;
         loadTimeline(false);
       }
 
