@@ -2,7 +2,7 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8">
-    <title>X Ultra - Live & Admin Censorship</title>
+    <title>X Ultra </title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       .theme-dark { background-color: #0b0f19; color: #f3f4f6; }
@@ -20,22 +20,31 @@
   </head>
   <body class="theme-dark font-sans antialiased min-h-screen">
 
-    <div id="authWall" class="fixed inset-0 bg-[#0b0f19] flex flex-col items-center justify-center z-50 p-4">
+    <!-- 認証ウォール（左下に隠し管理者トグルを設置） -->
+    <div id="authWall" class="fixed inset-0 bg-[#0b0f19] flex flex-col items-center justify-center z-50 p-4 relative">
       <div class="mb-6 text-4xl font-extrabold tracking-widest text-white">
         <span class="text-blue-500">X</span> <span class="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400">Live Edition</span>
       </div>
-      <div class="bg-card p-8 rounded-2xl w-full max-w-md border border-main shadow-2xl">
+      <div class="bg-card p-8 rounded-2xl w-full max-w-md border border-main shadow-2xl relative">
         <h2 id="authTitle" class="text-xl font-bold mb-2 text-center">Xにログイン</h2>
         <div class="space-y-4 mt-4">
           <input type="text" id="authUser" class="w-full input-box border rounded-lg p-3 text-sm focus:outline-none" placeholder="ユーザーID">
           <input type="password" id="authPass" class="w-full input-box border rounded-lg p-3 text-sm focus:outline-none" placeholder="パスワード">
+          
+          <!-- 秘密の管理者キー入力欄（初期は非表示） -->
           <div id="adminKeyWrapper" class="hidden">
-            <input type="password" id="authAdminKey" class="w-full input-box border rounded-lg p-3 text-sm focus:outline-none" placeholder="管理者シークレットキー">
+            <input type="password" id="authAdminKey" class="w-full input-box border rounded-lg p-3 text-sm focus:outline-none border-red-500/50" placeholder="管理者シークレットキー">
           </div>
+
           <button onclick="submitAuth()" id="authBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition">ログイン</button>
           <button onclick="toggleAuthMode()" id="toggleModeBtn" class="w-full text-xs text-blue-400 text-center block hover:underline">新規アカウントを作成する</button>
         </div>
       </div>
+
+      <!-- 左下に完全に隠されたシークレット・トリガーボタン -->
+      <button onclick="revealAdminKeyInput()" class="absolute bottom-4 left-4 text-gray-700 hover:text-gray-400 text-xs p-2 transition select-none" title="Secret Trigger">
+        👑
+      </button>
     </div>
 
     <div id="mainApp" class="max-w-6xl mx-auto min-h-screen grid grid-cols-1 md:grid-cols-4 border-l border-r border-main hidden">
@@ -92,7 +101,7 @@
 
         <div id="notifSection" class="hidden p-6 space-y-3"></div>
         
-        <!-- GAS版風 管理パネル -->
+        <!-- 管理パネル -->
         <div id="adminSection" class="hidden p-6 space-y-6"></div>
 
         <div id="tweetFormArea" class="p-6 border-b border-main space-y-3">
@@ -150,12 +159,18 @@
         }
       };
 
+      // 左下の隠しトリガーで管理者キー入力欄をトグル表示
+      function revealAdminKeyInput() {
+        const keyWrap = document.getElementById('adminKeyWrapper');
+        keyWrap.classList.toggle('hidden');
+      }
+
       function toggleAuthMode() {
         const title = document.getElementById('authTitle');
         const keyWrap = document.getElementById('adminKeyWrapper');
         if(title.innerText.includes('ログイン')) {
           title.innerText = 'アカウント作成';
-          keyWrap.classList.remove('hidden');
+          // アカウント作成時は自動でキー入力欄を出しておくか、隠すままにするか（ここでは隠すまま、左下で出す仕様）
         } else {
           title.innerText = 'Xにログイン';
           keyWrap.classList.add('hidden');
@@ -201,7 +216,6 @@
         buildNavigation();
         navigateTo('home');
 
-        // リアルタイム自動更新ループ（タイムライン＆DMチャット）
         if(liveInterval) clearInterval(liveInterval);
         liveInterval = setInterval(() => {
           if (currentSearchType === 'all' && !document.getElementById('timelineSection').classList.contains('hidden')) {
@@ -560,7 +574,6 @@
         }).then(() => alert("設定を保存しました！"));
       }
 
-      // GAS版デザインを再現した管理パネル ＆ DM検閲機能
       function renderAdminPanel() {
         fetch('/api/admin/data')
           .then(res => res.json())
@@ -592,7 +605,6 @@
 
             sec.innerHTML = `
               <div class="space-y-6">
-                <!-- ユーザーコントロール -->
                 <div class="bg-card p-4 rounded-xl border border-main space-y-3">
                   <h3 class="font-bold text-sm">ユーザーモデレーション</h3>
                   <div class="flex gap-2">
@@ -607,7 +619,6 @@
                   </div>
                 </div>
 
-                <!-- ユーザー一覧 (IP・オンライン・検閲付き) -->
                 <div class="bg-card p-4 rounded-xl border border-main">
                   <h3 class="font-bold text-sm mb-3">ユーザー一覧 & IP / 検閲モニター</h3>
                   <div class="max-h-60 overflow-y-auto">
@@ -624,13 +635,11 @@
                   </div>
                 </div>
 
-                <!-- DM検閲ビューワーエリア -->
                 <div id="dmInspectionBox" class="bg-card p-4 rounded-xl border border-main hidden">
                   <h3 id="inspectTitle" class="font-bold text-sm mb-2 text-red-400">DM検閲ビューワー</h3>
                   <div id="inspectContent" class="max-h-48 overflow-y-auto space-y-2 text-xs bg-black/20 p-3 rounded-lg"></div>
                 </div>
 
-                <!-- 監査ログ -->
                 <div class="bg-card p-4 rounded-xl border border-main">
                   <h3 class="font-bold text-sm mb-2">監査ログ</h3>
                   <div class="max-h-40 overflow-y-auto space-y-1">${logHtml || '<p class="text-xs text-gray-500">ログなし</p>'}</div>
