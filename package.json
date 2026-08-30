@@ -1,6 +1,6 @@
 {
-  "name": "x-respect-app-vercel",
-  "version": "2.0.0",
+  "name": "x-respect-app-vercel-full",
+  "version": "2.1.0",
   "private": true,
   "main": "server.js",
   "scripts": {
