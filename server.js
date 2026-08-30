@@ -7,7 +7,6 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// グローバルデータベースの初期化と復元強化
 if (!global._xUltraDb) {
   global._xUltraDb = {
     users: {},
@@ -16,7 +15,7 @@ if (!global._xUltraDb) {
     notifs: [],
     bans: [],
     logs: [],
-    ipLogs: {} // ユーザーごとのIP履歴を保持
+    ipLogs: {}
   };
 }
 let db = global._xUltraDb;
@@ -28,6 +27,7 @@ function loadData() {
       const data = fs.readFileSync(DATA_FILE, 'utf8');
       const parsed = JSON.parse(data);
       if (parsed && parsed.users) {
+        // メモリ上の最新ツイート数やフォロワー数を維持しつつマージ
         global._xUltraDb = parsed;
         db = global._xUltraDb;
       }
@@ -47,16 +47,16 @@ function saveData() {
 
 loadData();
 
-// 定期的なファイル同期とオンライン判定の調整
+// オンライン状態が勝手に消えないように判定時間を緩やかに延長（3分）
 setInterval(() => {
   const now = Date.now();
   if (!db.users) return;
   Object.keys(db.users).forEach(u => {
-    if (db.users[u].isOnline && (now - (db.users[u].lastSeen || 0) > 90000)) {
+    if (db.users[u].isOnline && (now - (db.users[u].lastSeen || 0) > 180000)) {
       db.users[u].isOnline = false;
     }
   });
-  saveData(); // 定期的に/tmpへバックアップ書き込み
+  saveData();
 }, 10000);
 
 function checkBan(req, res, next) {
@@ -82,8 +82,20 @@ function checkBan(req, res, next) {
 
 app.use(checkBan);
 
+// ハートビート（オンライン維持用）の常時受付エンドポイント
+app.post('/api/heartbeat', (req, res) => {
+  loadData();
+  const { username } = req.body;
+  if (username && db.users && db.users[username]) {
+    db.users[username].isOnline = true;
+    db.users[username].lastSeen = Date.now();
+    saveData();
+  }
+  res.json({ success: true });
+});
+
 app.post('/api/register', (req, res) => {
-  loadData(); // 読み込み最新化
+  loadData();
   const { username, password, adminPassword } = req.body;
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
   if (!username || !password) return res.json({ success: false, msg: '入力値が不正です' });
@@ -154,7 +166,7 @@ app.get('/api/online-users', (req, res) => {
   if (!db.users) db.users = {};
   const onlineList = Object.keys(db.users)
     .filter(u => db.users[u] && db.users[u].isOnline)
-    .map(u => ({ username: u, isAdmin: db.users[u].isAdmin, avatarUrl: db.users[u].avatarUrl }));
+    .map(u => ({ username: u, isAdmin: db.users[u].isAdmin, avatarUrl: db.users[u].avatarUrl || '' }));
   res.json({ count: onlineList.length, users: onlineList });
 });
 
@@ -259,14 +271,14 @@ app.get('/api/profile/:username', (req, res) => {
   const viewer = req.query.viewer;
   if (!db.users) db.users = {};
   const user = db.users[target];
-  if (!user) return res.status(404).json({});
+  if (!user) return res.status(404).json({ user: target, notFound: true });
 
   res.json({
     user: target,
-    bio: user.bio,
-    avatarUrl: user.avatarUrl,
-    dmSetting: user.dmSetting,
-    isOnline: user.isOnline,
+    bio: user.bio || '',
+    avatarUrl: user.avatarUrl || '',
+    dmSetting: user.dmSetting || 'allow_all',
+    isOnline: !!user.isOnline,
     followingCount: (user.following || []).length,
     followerCount: (user.followers || []).length,
     isFollowing: viewer && (user.followers || []).includes(viewer)
@@ -283,6 +295,8 @@ app.post('/api/profile/update', (req, res) => {
   if (bio !== undefined) user.bio = bio;
   if (avatarUrl !== undefined) user.avatarUrl = avatarUrl;
   if (dmSetting !== undefined) user.dmSetting = dmSetting;
+  user.isOnline = true;
+  user.lastSeen = Date.now();
   saveData();
   res.json({ success: true });
 });
@@ -294,6 +308,11 @@ app.post('/api/follow', (req, res) => {
   const me = db.users[username];
   const target = db.users[targetUser];
   if (!me || !target) return res.status(400).json({});
+
+  me.isOnline = true;
+  me.lastSeen = Date.now();
+  target.isOnline = true;
+  target.lastSeen = Date.now();
 
   if (!me.following) me.following = [];
   if (!target.followers) target.followers = [];
@@ -313,7 +332,7 @@ app.post('/api/follow', (req, res) => {
     });
   }
   saveData();
-  res.json({ success: true });
+  res.json({ success: true, isFollowing: idx === -1, followerCount: target.followers.length });
 });
 
 app.get('/api/dm/conversations/:username', (req, res) => {
@@ -327,7 +346,7 @@ app.get('/api/dm/conversations/:username', (req, res) => {
 
   const list = Array.from(contacts).map(c => ({
     username: c,
-    isOnline: db.users && db.users[c] ? db.users[c].isOnline : false
+    isOnline: db.users && db.users[c] ? !!db.users[c].isOnline : false
   }));
   res.json(list);
 });
@@ -344,7 +363,11 @@ app.post('/api/dm/send', (req, res) => {
   const { fromUser, toUser, message } = req.body;
   if (!db.users) db.users = {};
   const target = db.users[toUser];
-  if (!target) return res.status(404).json({});
+  const me = db.users[fromUser];
+  if (!target || !me) return res.status(404).json({ success: false, msg: 'ユーザーが見つかりません' });
+
+  me.isOnline = true;
+  me.lastSeen = Date.now();
 
   if (target.dmSetting === 'deny_all') {
     return res.json({ success: false, msg: 'このユーザーはDMを受け付けていません' });
@@ -356,7 +379,7 @@ app.post('/api/dm/send', (req, res) => {
   if (!db.notifs) db.notifs = [];
   db.notifs.push({ to: toUser, content: `@${fromUser} からDMが届きました`, timestamp: new Date().toLocaleString() });
   saveData();
-  res.json({ success: true });
+  res.json({ success: true, dm });
 });
 
 app.get('/api/notifs/:username', (req, res) => {
