@@ -1,816 +1,499 @@
 <!DOCTYPE html>
 <html lang="ja">
-  <head>
-    <meta charset="utf-8">
-    <title>X Ultra - Stable Edition</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-      .theme-dark { background-color: #0b0f19; color: #f3f4f6; }
-      .theme-dark .bg-card { background-color: #111827; }
-      .theme-dark .border-main { border-color: #1f2937; }
-      .theme-dark .input-box { background-color: #0b0f19; color: white; border-color: #374151; }
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>X Ultra</title>
+  <style>
+    :root {
+      --bg-color: #000000;
+      --text-color: #e7e9ea;
+      --text-secondary: #71767b;
+      --border-color: #2f3336;
+      --accent-color: #1d9bf0;
+      --accent-hover: #1a8cd8;
+      --danger-color: #f4212e;
+      --hover-bg: rgba(239, 240, 241, 0.1);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: var(--bg-color); color: var(--text-color); display: flex; justify-content: center; min-height: 100vh; }
+    
+    .app-container { display: flex; width: 100%; max-width: 1200px; }
+    
+    /* サイドバー */
+    sidebar { width: 275px; border-right: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 10px 20px; justify-content: space-between; height: 100vh; position: sticky; top: 0; }
+    .nav-links { display: flex; flex-direction: column; gap: 8px; }
+    .nav-item { display: flex; align-items: center; gap: 20px; font-size: 20px; padding: 12px 16px; border-radius: 9999px; cursor: pointer; color: var(--text-color); text-decoration: none; width: fit-content; }
+    .nav-item:hover { background-color: var(--hover-bg); }
+    .nav-item.active { font-weight: bold; }
+    
+    /* メインコンテンツ */
+    main { flex: 1; border-right: 1px solid var(--border-color); max-width: 600px; min-height: 100vh; }
+    .header { position: sticky; top: 0; background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border-color); padding: 15px 20px; font-size: 20px; font-weight: bold; z-index: 10; }
+    
+    /* 右側パネル */
+    aside { width: 350px; padding: 15px 20px; display: flex; flex-direction: column; gap: 20px; height: 100vh; position: sticky; top: 0; overflow-y: auto; }
+    .panel-box { background: #16181c; border-radius: 16px; padding: 15px; }
+    .panel-box h3 { font-size: 17px; margin-bottom: 12px; }
+    
+    /* 共通フォーム部品 */
+    input, textarea { width: 100%; background: transparent; border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-color); padding: 10px; font-size: 15px; outline: none; margin-bottom: 10px; }
+    input:focus, textarea:focus { border-color: var(--accent-color); }
+    button { background: var(--accent-color); color: white; border: none; border-radius: 9999px; padding: 10px 20px; font-weight: bold; cursor: pointer; font-size: 15px; transition: background 0.2s; }
+    button:hover { background: var(--accent-hover); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    
+    /* タイムライン・ツイート */
+    .tweet-box-container { padding: 15px 20px; border-bottom: 1px solid var(--border-color); display: flex; gap: 15px; }
+    .tweet-box-container textarea { resize: none; border: none; font-size: 18px; min-height: 80px; }
+    .tweet-card { padding: 15px 20px; border-bottom: 1px solid var(--border-color); display: flex; gap: 15px; cursor: pointer; }
+    .tweet-card:hover { background: rgba(255, 255, 255, 0.03); }
+    .avatar { width: 40px; height: 40px; border-radius: 50%; background: #333; object-fit: cover; }
+    .tweet-content { flex: 1; }
+    .tweet-header { display: flex; gap: 8px; margin-bottom: 4px; font-size: 15px; }
+    .tweet-user { font-weight: bold; color: var(--text-color); text-decoration: none; }
+    .tweet-user:hover { text-decoration: underline; }
+    .tweet-time { color: var(--text-secondary); }
+    .tweet-text { font-size: 15px; line-height: 1.5; margin-bottom: 10px; word-break: break-all; }
+    .tweet-actions { display: flex; gap: 40px; color: var(--text-secondary); font-size: 13px; }
+    .action-btn { background: none; border: none; color: inherit; cursor: pointer; padding: 0; font-size: inherit; }
+    .action-btn:hover { color: var(--accent-color); }
+    
+    /* モーダル・画面切り替え */
+    .view-section { display: none; }
+    .view-section.active { display: block; }
+    
+    /* オンラインユーザーリスト */
+    .online-user-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .online-badge { width: 8px; height: 8px; background: #00ba7c; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #00ba7c; }
+    
+    /* 認証画面 */
+    #auth-screen { position: fixed; inset: 0; background: var(--bg-color); z-index: 1000; display: flex; justify-content: center; align-items: center; }
+    .auth-card { width: 100%; max-width: 400px; padding: 40px; display: flex; flex-direction: column; gap: 15px; border: 1px solid var(--border-color); border-radius: 16px; }
+    
+    /* DM画面 */
+    .dm-layout { display: flex; height: calc(100vh - 53px); }
+    .dm-sidebar { width: 40%; border-right: 1px solid var(--border-color); overflow-y: auto; }
+    .dm-chat-area { width: 60%; display: flex; flex-direction: column; justify-content: space-between; }
+    .dm-contact { padding: 15px; border-bottom: 1px solid var(--border-color); cursor: pointer; display: flex; align-items: center; gap: 10px; }
+    .dm-contact:hover { background: var(--hover-bg); }
+    .dm-messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+    .dm-bubble { max-width: 70%; padding: 10px 14px; border-radius: 16px; font-size: 14px; word-break: break-all; }
+    .dm-bubble.mine { background: var(--accent-color); color: white; align-self: flex-end; }
+    .dm-bubble.yours { background: #2f3336; color: white; align-self: flex-start; }
+  </style>
+</head>
+<body>
 
-      .theme-light { background-color: #ffffff; color: #111827; }
-      .theme-light .bg-card { background-color: #f9fafb; }
-      .theme-light .border-main { border-color: #e5e7eb; }
-      .theme-light .input-box { background-color: #ffffff; color: black; border-color: #d1d5db; }
-
-      .tab-active { color: #3b82f6; border-bottom: 2px solid #3b82f6; }
-    </style>
-  </head>
-  <body class="theme-dark font-sans antialiased min-h-screen">
-
-    <div id="banScreen" class="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center p-6 text-center hidden">
-      <div class="bg-red-950/40 border border-red-600 p-8 rounded-2xl max-w-lg w-full space-y-4">
-        <h1 class="text-3xl font-black text-red-500">アクセスが制限されています</h1>
-        <p class="text-lg font-bold text-white">あなたはBANされました。</p>
-        <div class="text-left bg-black/40 p-4 rounded-xl space-y-2 text-sm border border-red-900/50">
-          <p><strong class="text-gray-400">執行者：</strong> <span id="banExecUser" class="text-red-400 font-bold"></span></p>
-          <p><strong class="text-gray-400">理由：</strong> <span id="banReasonText" class="text-white"></span></p>
-          <p><strong class="text-gray-400">解除予定：</strong> <span id="banUntilText" class="text-yellow-400 font-bold"></span></p>
-        </div>
-      </div>
+  <!-- ログイン / アカウント作成画面 -->
+  <div id="auth-screen">
+    <div class="auth-card">
+      <h2>X Ultra へログイン</h2>
+      <input type="text" id="auth-username" placeholder="ユーザーID">
+      <input type="password" id="auth-password" placeholder="パスワード">
+      <input type="password" id="admin-secret-input" placeholder="管理者キー (管理者のみ)">
+      <button onclick="handleLogin()">ログイン</button>
+      <button onclick="handleRegister()" style="background:transparent; border:1px solid var(--border-color); color:var(--text-color);">アカウント作成</button>
+      <p id="auth-error" style="color:var(--danger-color); font-size:13px;"></p>
     </div>
+  </div>
 
-    <div id="authWall" class="fixed inset-0 bg-[#0b0f19] flex flex-col items-center justify-center z-50 p-4 relative">
-      <div class="mb-6 text-4xl font-extrabold tracking-widest text-white">
-        <span class="text-blue-500">X</span> <span class="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400">Ultra</span>
+  <div class="app-container" id="main-app" style="display:none;">
+    <!-- 左側ナビゲーション -->
+    <sidebar>
+      <div class="nav-links">
+        <div style="font-size: 26px; font-weight: bold; padding: 12px 16px; color: var(--accent-color);">𝕏 Ultra</div>
+        <div class="nav-item active" onclick="switchTab('home')">ホーム</div>
+        <div class="nav-item" onclick="switchTab('dm')">メッセージ</div>
+        <div class="nav-item" onclick="switchTab('profile')">プロフィール</div>
+        <div class="nav-item" id="admin-nav" style="display:none;" onclick="switchTab('admin')">管理パネル</div>
       </div>
-      <div class="bg-card p-8 rounded-2xl w-full max-w-md border border-main shadow-2xl relative">
-        <h2 id="authTitle" class="text-xl font-bold mb-2 text-center">Xにログイン</h2>
-        <div class="space-y-4 mt-4">
-          <input type="text" id="authUser" class="w-full input-box border rounded-lg p-3 text-sm focus:outline-none" placeholder="ユーザーID">
-          <input type="password" id="authPass" class="w-full input-box border rounded-lg p-3 text-sm focus:outline-none" placeholder="パスワード">
-          
-          <div id="adminKeyWrapper" class="hidden">
-            <input type="password" id="authAdminKey" class="w-full input-box border rounded-lg p-3 text-sm focus:outline-none border-red-500/50" placeholder="管理者シークレットキー">
+      <div style="padding: 12px 16px; font-size: 14px; color: var(--text-secondary);">
+        ログイン中: <b id="current-user-label" style="color:var(--text-color)"></b>
+        <button onclick="logout()" style="margin-top:8px; background:transparent; color:var(--danger-color); padding:4px 8px; font-size:12px;">ログアウト</button>
+      </div>
+    </sidebar>
+
+    <!-- 中央メイン画面 -->
+    <main>
+      <!-- ホームタブ -->
+      <div id="tab-home" class="view-section active">
+        <div class="header">ホーム</div>
+        <div class="tweet-box-container">
+          <div class="tweet-content">
+            <textarea id="tweet-content-input" placeholder="いまどうしてる？"></textarea>
+            <div style="display: flex; justify-content: flex-end; margin-top: 5px;">
+              <button id="tweet-submit-btn" onclick="submitTweet()">ポストする</button>
+            </div>
           </div>
+        </div>
+        <div id="timeline-container"></div>
+      </div>
 
-          <button onclick="submitAuth()" id="authBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition">ログイン</button>
-          <button onclick="toggleAuthMode()" id="toggleModeBtn" class="w-full text-xs text-blue-400 text-center block hover:underline">新規アカウントを作成する</button>
+      <!-- DMタブ -->
+      <div id="tab-dm" class="view-section">
+        <div class="header">メッセージ</div>
+        <div class="dm-layout">
+          <div class="dm-sidebar" id="dm-contact-list"></div>
+          <div class="dm-chat-area">
+            <div id="dm-chat-header" style="padding: 15px; border-bottom: 1px solid var(--border-color); font-weight: bold;">相手を選んでください</div>
+            <div class="dm-messages" id="dm-messages-container"></div>
+            <div style="padding: 10px; border-top: 1px solid var(--border-color); display: flex; gap: 10px;">
+              <input type="text" id="dm-input" placeholder="新しいメッセージを送信..." style="margin:0;">
+              <button onclick="sendDm()" style="width: 100px;">送信</button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <button onclick="revealAdminKeyInput()" class="absolute bottom-2 left-2 text-gray-900 hover:text-gray-600 text-[10px] p-2 select-none" title="Admin">
-        ▪️
-      </button>
-    </div>
-
-    <div id="onlineModal" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center hidden">
-      <div class="bg-card border border-main rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-2xl">
-        <div class="flex justify-between items-center border-b border-main pb-3">
-          <h3 class="font-bold text-base">🟢 オンラインユーザー一覧</h3>
-          <button onclick="toggleOnlineModal(false)" class="text-gray-400 font-bold">&times;</button>
-        </div>
-        <div id="onlineModalList" class="space-y-2 max-h-60 overflow-y-auto"></div>
+      <!-- プロフィールタブ -->
+      <div id="tab-profile" class="view-section">
+        <div class="header" id="profile-header-title">プロフィール</div>
+        <div id="profile-content-container" style="padding: 20px;"></div>
       </div>
-    </div>
 
-    <div id="mainApp" class="max-w-6xl mx-auto min-h-screen grid grid-cols-1 md:grid-cols-4 border-l border-r border-main hidden">
+      <!-- 管理パネルタブ -->
+      <div id="tab-admin" class="view-section">
+        <div class="header">管理パネル（IP・接続ログ確認）</div>
+        <div style="padding: 20px;" id="admin-panel-content">
+          <p>読み込み中...</p>
+        </div>
+      </div>
+    </main>
+
+    <!-- 右側サイドパネル -->
+    <aside>
+      <div class="panel-box">
+        <h3>オンラインユーザー</h3>
+        <div id="online-users-container">読み込み中...</div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    let currentUser = null;
+    let isAdminUser = false;
+    let currentTab = 'home';
+    let activeDmUser = null;
+    let viewingProfileUser = null;
+
+    // 認証処理
+    async function handleLogin() {
+      const username = document.getElementById('auth-username').value.trim();
+      const password = document.getElementById('auth-password').value.trim();
+      if (!username || !password) return alert('入力してください');
+
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      if (data.success) {
+        currentUser = username;
+        isAdminUser = data.isAdmin || data.isModerator;
+        initApp();
+      } else {
+        document.getElementById('auth-error').textContent = data.msg;
+      }
+    }
+
+    async function handleRegister() {
+      const username = document.getElementById('auth-username').value.trim();
+      const password = document.getElementById('auth-password').value.trim();
+      const adminPassword = document.getElementById('admin-secret-input').value.trim();
+      if (!username || !password) return alert('入力してください');
+
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, adminPassword })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.msg);
+        handleLogin();
+      } else {
+        document.getElementById('auth-error').textContent = data.msg;
+      }
+    }
+
+    function logout() {
+      location.reload();
+    }
+
+    function initApp() {
+      document.getElementById('auth-screen').style.display = 'none';
+      document.getElementById('main-app').style.display = 'flex';
+      document.getElementById('current-user-label').textContent = '@' + currentUser;
+      if (isAdminUser) {
+        document.getElementById('admin-nav').style.display = 'flex';
+      }
+      fetchTweets();
+      fetchOnlineUsers();
+      fetchDmContacts();
       
-      <aside class="col-span-1 border-r border-main p-4 flex flex-col justify-between sticky top-0 h-screen">
-        <div class="space-y-6">
-          <h1 class="text-2xl font-black text-blue-500 tracking-wider cursor-pointer" onclick="navigateTo('home')">𝕏 Ultra</h1>
-          <nav id="bottomNavContainer" class="space-y-2 flex flex-col text-sm font-semibold"></nav>
-        </div>
-        <div class="flex items-center gap-3 p-2 bg-card rounded-xl border border-main">
-          <div id="myAvatarContainer" class="relative w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white overflow-hidden flex-shrink-0">
-            <span id="myAvatarText">?</span>
-            <span id="myOnlineDot" class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-black rounded-full"></span>
-          </div>
-          <div class="overflow-hidden">
-            <p id="myUsernameDisplay" class="font-bold text-sm truncate"></p>
-            <span class="text-[10px] text-green-400">● オンライン</span>
-          </div>
-        </div>
-      </aside>
-
-      <main class="col-span-3 pb-24 min-h-screen border-r border-main">
-        <header class="sticky top-0 bg-inherit backdrop-blur border-b border-main z-10 px-6 py-4 flex justify-between items-center">
-          <div class="flex items-center gap-4">
-            <h2 id="pageTitle" class="text-xl font-bold">ホーム</h2>
-            <button onclick="toggleOnlineModal(true)" class="bg-card hover:bg-card/80 border border-main px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition">
-              <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-              <span id="headerOnlineCount">オンライン: 0人</span>
-            </button>
-          </div>
-          <div class="flex items-center gap-3">
-            <input type="text" id="globalSearchInput" class="input-box border rounded-full px-4 py-1.5 text-xs focus:outline-none w-36" placeholder="検索...">
-            <button onclick="executeGlobalSearch()" class="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-full font-bold">検索</button>
-            <button onclick="toggleThemeMode()" class="text-xs bg-card px-3 py-1.5 rounded-lg border border-main">🌓</button>
-          </div>
-        </header>
-
-        <div id="tabBar" class="flex border-b border-main text-center font-bold text-sm">
-          <button onclick="switchTab('all')" id="tabAll" class="flex-1 py-3 tab-active">おすすめ</button>
-          <button onclick="switchTab('follow')" id="tabFollow" class="flex-1 py-3 text-gray-500">フォロー中</button>
-        </div>
-
-        <div id="profileHeader" class="border-b border-main p-6 bg-card/20 hidden"></div>
-        <div id="settingsSection" class="hidden p-6 space-y-6"></div>
-        
-        <div id="dmSection" class="hidden grid grid-cols-3 h-[calc(100vh-80px)]">
-          <div class="col-span-1 border-r border-main p-4 overflow-y-auto">
-            <h3 class="font-bold text-sm mb-3">📬 DM一覧</h3>
-            <div id="dmContactList" class="space-y-2"></div>
-          </div>
-          <div class="col-span-2 flex flex-col p-4 h-full">
-            <h3 id="dmTargetTitle" class="font-bold border-b border-main pb-2 mb-2 text-sm">チャット</h3>
-            <div id="dmChatBox" class="flex-1 overflow-y-auto space-y-3 p-3 bg-card/30 rounded-xl border border-main mb-3 flex flex-col"></div>
-            <div class="flex gap-2">
-              <input type="text" id="dmInput" class="flex-1 input-box border rounded-full px-4 py-2 text-sm focus:outline-none" placeholder="メッセージを入力...">
-              <button onclick="executeSendDM()" class="bg-blue-600 text-white font-bold px-5 py-2 rounded-full text-sm">送信</button>
-            </div>
-          </div>
-        </div>
-
-        <div id="notifSection" class="hidden p-6 space-y-3"></div>
-        <div id="adminSection" class="hidden p-6 space-y-6"></div>
-
-        <div id="tweetFormArea" class="p-6 border-b border-main space-y-3">
-          <div id="formContextBanner" class="hidden bg-blue-900/40 text-blue-300 text-xs px-3 py-1.5 rounded-lg flex justify-between items-center">
-            <span id="formContextText">返信中</span>
-            <button onclick="clearFormContext()" class="text-white font-bold">&times;</button>
-          </div>
-          <div class="flex gap-4">
-            <div class="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white overflow-hidden flex-shrink-0" id="formAvatarContainer">
-              <span id="formAvatarText">?</span>
-            </div>
-            <div class="flex-1 space-y-3">
-              <textarea id="tweetInput" class="w-full bg-transparent placeholder-gray-500 text-base resize-none focus:outline-none h-20" placeholder="いまどうしてる？"></textarea>
-              <div class="flex justify-between items-center pt-2 border-t border-main">
-                <input type="file" id="localFileInput" accept="image/*,video/*" class="text-xs text-gray-400" onchange="handleFileSelect(event)">
-                <button onclick="submitTweet()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-2 rounded-full text-sm">ポストする</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div id="timelineSection">
-          <div id="timeline" class="divide-y divide-main"></div>
-        </div>
-      </main>
-    </div>
-
-    <script>
-      let currentMe = "";
-      let isMyAdmin = false;
-      let isMyMod = false;
-      let activeDMTarget = "";
-      let currentSearchType = "all";
-      let currentSearchQuery = "";
-      let activeReplyToId = null;
-      let activeRepostOfId = null;
-      let uploadedMediaUrl = "";
-      let liveInterval = null;
-
-      function checkBanStatus(resJson) {
-        if (resJson && resJson.banned) {
-          document.getElementById('banScreen').classList.remove('hidden');
-          document.getElementById('banExecUser').innerText = resJson.executedBy;
-          document.getElementById('banReasonText').innerText = resJson.reason;
-          document.getElementById('banUntilText').innerText = resJson.bannedUntil;
-          return true;
-        }
-        return false;
-      }
-
-      window.onload = function() {
-        const user = localStorage.getItem('X_RESP_USER');
-        const token = localStorage.getItem('X_RESP_TOKEN');
-        if (user && token) {
-          fetch('/api/login', {
+      // 自動更新ループ（5秒おき）
+      setInterval(() => {
+        // ハートビート送信（オンライン維持）
+        if (currentUser) {
+          fetch('/api/heartbeat', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ username: user, password: token })
-          }).then(res => res.json()).then(res => {
-            if (checkBanStatus(res)) return;
-            if (res.success) launchApp(user, res.isAdmin, res.isModerator);
-            else localStorage.clear();
-          });
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: currentUser })
+          }).catch(() => {});
         }
-      };
+        
+        fetchOnlineUsers();
+        if (currentTab === 'home') fetchTweets(true);
+        if (currentTab === 'dm' && activeDmUser) fetchMessages(activeDmUser);
+      }, 5000);
+    }
 
-      function revealAdminKeyInput() {
-        document.getElementById('adminKeyWrapper').classList.toggle('hidden');
+    // タブ切り替え
+    function switchTab(tabName) {
+      currentTab = tabName;
+      document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+
+      document.getElementById('tab-' + tabName).classList.add('active');
+      
+      if (tabName === 'home') {
+        fetchTweets();
+      } else if (tabName === 'profile') {
+        loadProfile(currentUser);
+      } else if (tabName === 'dm') {
+        fetchDmContacts();
+      } else if (tabName === 'admin') {
+        loadAdminData();
       }
+    }
 
-      function toggleAuthMode() {
-        const title = document.getElementById('authTitle');
-        const authBtn = document.getElementById('authBtn');
-        const toggleBtn = document.getElementById('toggleModeBtn');
-        const keyWrap = document.getElementById('adminKeyWrapper');
+    // ツイート投稿
+    async function submitTweet() {
+      const textContent = document.getElementById('tweet-content-input').value.trim();
+      const submitBtn = document.getElementById('tweet-submit-btn');
+      if (!textContent) return;
 
-        if(title.innerText.includes('ログイン')) {
-          title.innerText = 'アカウント作成';
-          authBtn.innerText = 'アカウントを作成する';
-          toggleBtn.innerText = 'すでにアカウントをお持ちですか？ ログイン';
-        } else {
-          title.innerText = 'Xにログイン';
-          authBtn.innerText = 'ログイン';
-          toggleBtn.innerText = '新規アカウントを作成する';
-          keyWrap.classList.add('hidden');
-        }
-      }
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'サーバーに接続中....';
 
-      function submitAuth() {
-        const user = document.getElementById('authUser').value.trim();
-        const pass = document.getElementById('authPass').value.trim();
-        const adminKey = document.getElementById('authAdminKey').value.trim();
-        if(!user || !pass) return alert("入力してください");
-
-        const isCreate = document.getElementById('authTitle').innerText.includes('作成');
-        const endpoint = isCreate ? '/api/register' : '/api/login';
-
-        fetch(endpoint, {
+      try {
+        const res = await fetch('/api/tweets', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ username: user, password: pass, adminPassword: adminKey })
-        }).then(res => res.json()).then(res => {
-          if (checkBanStatus(res)) return;
-          if (res.success) {
-            if (isCreate) { alert(res.msg || '成功しました'); toggleAuthMode(); }
-            else {
-              localStorage.setItem('X_RESP_USER', user);
-              localStorage.setItem('X_RESP_TOKEN', res.token);
-              launchApp(user, res.isAdmin, res.isModerator);
-            }
-          } else {
-            alert(res.msg);
-          }
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: currentUser, textContent })
         });
-      }
-
-      function launchApp(user, isAdmin, isMod) {
-        currentMe = user;
-        isMyAdmin = isAdmin;
-        isMyMod = isMod;
-        document.getElementById('authWall').classList.add('hidden');
-        document.getElementById('mainApp').classList.remove('hidden');
-        document.getElementById('myUsernameDisplay').innerText = "@" + currentMe;
-        loadUserAvatarDisplay(currentMe, 'myAvatarContainer', 'myAvatarText');
-        loadUserAvatarDisplay(currentMe, 'formAvatarContainer', 'formAvatarText');
-
-        buildNavigation();
-        navigateTo('home');
-        refreshOnlineStats();
-
-        if(liveInterval) clearInterval(liveInterval);
-        liveInterval = setInterval(() => {
-          refreshOnlineStats();
-          if (currentSearchType === 'all' && !document.getElementById('timelineSection').classList.contains('hidden')) {
-            loadTimeline();
-          }
-          if (!document.getElementById('dmSection').classList.contains('hidden')) {
-            loadDMConversations();
-            if (activeDMTarget) loadDMLogs(true);
-          }
-        }, 5000);
-      }
-
-      function loadUserAvatarDisplay(username, containerId, textId) {
-        fetch(`/api/profile/${username}?viewer=${currentMe}`)
-          .then(res => res.json())
-          .then(prof => {
-            const container = document.getElementById(containerId);
-            if (prof.avatarUrl) {
-              container.innerHTML = `<img src="${prof.avatarUrl}" class="w-full h-full object-cover">`;
-            } else {
-              document.getElementById(textId).innerText = username[0].toUpperCase();
-            }
-          });
-      }
-
-      function refreshOnlineStats() {
-        fetch('/api/online-users').then(res => res.json()).then(data => {
-          document.getElementById('headerOnlineCount').innerText = `オンライン: ${data.count}人`;
-          window._cachedOnlineUsers = data.users;
-        });
-      }
-
-      function toggleOnlineModal(show) {
-        const modal = document.getElementById('onlineModal');
-        if (show) {
-          modal.classList.remove('hidden');
-          const list = document.getElementById('onlineModalList');
-          list.innerHTML = "";
-          const users = window._cachedOnlineUsers || [];
-          if(users.length === 0) list.innerHTML = '<p class="text-xs text-gray-500">オンラインユーザーはいません</p>';
-          users.forEach(u => {
-            list.insertAdjacentHTML('beforeend', `
-              <div class="flex items-center justify-between p-2 bg-card/60 rounded-xl border border-main">
-                <div class="flex items-center gap-2 cursor-pointer" onclick="toggleOnlineModal(false); viewProfile('${u.username}')">
-                  <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white overflow-hidden">
-                    ${u.avatarUrl ? `<img src="${u.avatarUrl}" class="w-full h-full object-cover">` : u.username[0].toUpperCase()}
-                  </div>
-                  <span class="text-xs font-bold">@${u.username} ${u.isAdmin ? '👑' : ''}</span>
-                </div>
-                <span class="w-2 h-2 bg-green-500 rounded-full"></span>
-              </div>
-            `);
-          });
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById('tweet-content-input').value = '';
+          fetchTweets();
         } else {
-          modal.classList.add('hidden');
+          alert(data.msg || '投稿失敗');
         }
+      } catch (e) {
+        alert('サーバー接続エラー');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'ポストする';
       }
+    }
 
-      function buildNavigation() {
-        let navHtml = `
-          <button onclick="navigateTo('home')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-card transition text-inherit"><span class="text-xl">🏠</span><span>ホーム</span></button>
-          <button onclick="navigateTo('notif')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-card transition text-inherit"><span class="text-xl">🔔</span><span>通知</span></button>
-          <button onclick="navigateTo('dm')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-card transition text-inherit"><span class="text-xl">📬</span><span>DM</span></button>
-          <button onclick="navigateTo('profile')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-card transition text-inherit"><span class="text-xl">👤</span><span>プロフィール</span></button>
-          <button onclick="navigateTo('settings')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-card transition text-inherit"><span class="text-xl">⚙️</span><span>設定</span></button>
-        `;
-        if (isMyAdmin || isMyMod) {
-          navHtml += `<button onclick="navigateTo('admin')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-card transition text-red-400 font-bold"><span class="text-xl">🛡️</span><span>管理パネル</span></button>`;
-        }
-        document.getElementById('bottomNavContainer').innerHTML = navHtml;
-      }
-
-      function navigateTo(target) {
-        ['profileHeader', 'settingsSection', 'dmSection', 'notifSection', 'adminSection', 'tweetFormArea', 'timelineSection', 'tabBar'].forEach(id => {
-          document.getElementById(id).classList.add('hidden');
-        });
-
-        if (target === 'home') {
-          currentSearchType = 'all';
-          document.getElementById('pageTitle').innerText = "ホーム";
-          document.getElementById('tabBar').classList.remove('hidden');
-          document.getElementById('tweetFormArea').classList.remove('hidden');
-          document.getElementById('timelineSection').classList.remove('hidden');
-          loadTimeline();
-        } else if (target === 'dm') {
-          document.getElementById('pageTitle').innerText = "ダイレクトメッセージ";
-          document.getElementById('dmSection').classList.remove('hidden');
-          loadDMConversations();
-        } else if (target === 'notif') {
-          document.getElementById('pageTitle').innerText = "通知";
-          document.getElementById('notifSection').classList.remove('hidden');
-          loadNotifications();
-        } else if (target === 'settings') {
-          document.getElementById('pageTitle').innerText = "設定・プロフィール編集";
-          document.getElementById('settingsSection').classList.remove('hidden');
-          renderSettings();
-        } else if (target === 'profile') {
-          viewProfile(currentMe);
-        } else if (target === 'admin') {
-          document.getElementById('pageTitle').innerText = "モデレーション管理パネル";
-          document.getElementById('adminSection').classList.remove('hidden');
-          renderAdminPanel();
-        }
-      }
-
-      function switchTab(type) {
-        currentSearchType = type;
-        document.getElementById('tabAll').className = type === 'all' ? 'flex-1 py-3 tab-active' : 'flex-1 py-3 text-gray-500';
-        document.getElementById('tabFollow').className = type === 'follow' ? 'flex-1 py-3 tab-active' : 'flex-1 py-3 text-gray-500';
-        loadTimeline();
-      }
-
-      function loadTimeline() {
-        fetch(`/api/tweets?searchType=${currentSearchType}&searchQuery=${currentSearchQuery}&currentMe=${currentMe}`)
-          .then(res => res.json())
-          .then(response => {
-            if (checkBanStatus(response)) return;
-            renderTweetsList(response.data);
-          });
-      }
-
-      function renderTweetsList(tweets) {
-        const container = document.getElementById('timeline');
-        container.innerHTML = '';
-        if(!tweets || tweets.length === 0) {
-          container.innerHTML = '<p class="p-6 text-center text-xs text-gray-500">投稿がありません</p>';
-          return;
-        }
-        tweets.forEach(t => {
-          const isLiked = t.likes && t.likes.includes(currentMe);
-          const canDelete = (t.user === currentMe || isMyAdmin || isMyMod);
-          
-          let repostHtml = '';
-          if (t.repostData) {
-            const rd = t.repostData;
-            repostHtml = `
-              <div class="mt-3 border border-main rounded-xl p-3 bg-card/50">
-                <div class="flex items-center gap-2 text-xs">
-                  <span class="font-bold">@${rd.user}</span>
-                  <span class="text-gray-500">${rd.timestamp}</span>
-                </div>
-                <p class="mt-1 text-xs">${rd.content}</p>
-              </div>
-            `;
-          }
-
-          const avatarHtml = t.avatarUrl 
-            ? `<img src="${t.avatarUrl}" class="w-full h-full object-cover">` 
-            : t.user[0].toUpperCase();
-
-          container.insertAdjacentHTML('beforeend', `
-            <div class="p-6 hover:bg-card/20 transition flex gap-4 border-b border-main">
-              <div class="w-12 h-12 rounded-full bg-slate-600 flex items-center justify-center font-bold text-white flex-shrink-0 cursor-pointer overflow-hidden" onclick="viewProfile('${t.user}')">${avatarHtml}</div>
-              <div class="flex-1">
-                <div class="flex items-center justify-between text-sm">
-                  <div class="flex items-center gap-2">
-                    <span class="font-bold cursor-pointer hover:underline" onclick="viewProfile('${t.user}')">@${t.user}</span>
-                    <span class="text-gray-500 text-xs">${t.timestamp}</span>
-                  </div>
-                  ${canDelete ? `<button onclick="deleteTweet('${t.id}')" class="text-xs text-red-400 hover:underline">削除</button>` : ''}
-                </div>
-                ${t.replyToUser ? `<p class="text-xs text-blue-400 mt-1">@${t.replyToUser} への返信</p>` : ''}
-                <p class="mt-2 text-sm whitespace-pre-wrap">${t.content}</p>
-                ${t.mediaUrl ? `<div class="mt-3"><img src="${t.mediaUrl}" class="max-h-60 rounded-xl border border-main"></div>` : ''}
-                ${repostHtml}
-                <div class="flex gap-6 mt-3 text-xs text-gray-500">
-                  <button onclick="setReply('${t.id}', '${t.user}')" class="hover:text-blue-400">💬 返信</button>
-                  <button onclick="setRepost('${t.id}')" class="hover:text-green-400">🔄 引用</button>
-                  <button onclick="clickLike('${t.id}', this)" class="${isLiked?'text-pink-500 font-bold':'hover:text-pink-500'}">❤️ ${t.likes ? t.likes.length : 0}</button>
-                </div>
-              </div>
+    // タイムライン取得
+    async function fetchTweets(silent = false) {
+      const res = await fetch(`/api/tweets?currentMe=${currentUser}`);
+      const json = await res.json();
+      const container = document.getElementById('timeline-container');
+      
+      container.innerHTML = json.data.map(t => `
+        <div class="tweet-card">
+          <div class="avatar" style="background:${t.user === currentUser ? '#1d9bf0' : '#444'}"></div>
+          <div class="tweet-content">
+            <div class="tweet-header">
+              <span class="tweet-user" onclick="loadProfile('${t.user}')">@${t.user}</span>
+              <span class="tweet-time">${t.timestamp}</span>
             </div>
-          `);
-        });
+            <div class="tweet-text">${t.content}</div>
+            <div class="tweet-actions">
+              <button class="action-btn" onclick="likeTweet('${t.id}')">❤️ ${(t.likes || []).length}</button>
+              ${t.user === currentUser || isAdminUser ? `<button class="action-btn" style="color:var(--danger-color)" onclick="deleteTweet('${t.id}')">削除</button>` : ''}
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function likeTweet(tweetId) {
+      await fetch('/api/tweets/like', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tweetId, username: currentUser })
+      });
+      fetchTweets(true);
+    }
+
+    async function deleteTweet(tweetId) {
+      if (!confirm('削除しますか？')) return;
+      await fetch(`/api/tweets/${tweetId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: currentUser })
+      });
+      fetchTweets();
+    }
+
+    // オンラインユーザー
+    async function fetchOnlineUsers() {
+      const res = await fetch('/api/online-users');
+      const data = await res.json();
+      const container = document.getElementById('online-users-container');
+      container.innerHTML = data.users.map(u => `
+        <div class="online-user-item">
+          <span style="cursor:pointer" onclick="loadProfile('${u.username}')">@${u.username}</span>
+          <span class="online-badge"></span>
+        </div>
+      `).join('');
+    }
+
+    // プロフィール関連 (@undefined 対策 & DMボタン)
+    async function loadProfile(targetUser) {
+      if (!targetUser) return;
+      viewingProfileUser = targetUser;
+      switchTab('profile');
+      document.getElementById('profile-header-title').textContent = '@' + targetUser + ' のプロフィール';
+
+      const res = await fetch(`/api/profile/${targetUser}?viewer=${currentUser}`);
+      const data = await res.json();
+      
+      const container = document.getElementById('profile-content-container');
+      if (data.notFound) {
+        container.innerHTML = '<p>ユーザーが見つかりません</p>';
+        return;
       }
 
-      function handleFileSelect(event) {
-        const file = event.target.files[0];
-        if(!file) return;
-        const reader = new FileReader();
-        reader.onload = function(e) { uploadedMediaUrl = e.target.result; };
-        reader.readAsDataURL(file);
+      container.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:15px;">
+          <div>
+            <h2 style="font-size:22px;">@${data.user}</h2>
+            <p style="color:var(--text-secondary); margin-top:5px;">${data.bio || '自己紹介はありません'}</p>
+          </div>
+          <div style="display:flex; gap:20px; font-size:15px;">
+            <span>フォロー中: <b>${data.followingCount}</b></span>
+            <span>フォロワー: <b>${data.followerCount}</b></span>
+          </div>
+          <div style="display:flex; gap:10px;">
+            ${data.user !== currentUser ? `
+              <button onclick="toggleFollow('${data.user}')">${data.isFollowing ? 'フォロー解除' : 'フォローする'}</button>
+              <button onclick="openDmWith('${data.user}')" style="background:transparent; border:1px solid var(--border-color); color:var(--text-color);">DMを送る</button>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    async function toggleFollow(targetUser) {
+      await fetch('/api/follow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: currentUser, targetUser })
+      });
+      loadProfile(targetUser);
+    }
+
+    // プロフィール画面からDMへ飛ぶ処理
+    function openDmWith(targetUser) {
+      switchTab('dm');
+      selectDmUser(targetUser);
+    }
+
+    // DM関連
+    async function fetchDmContacts() {
+      const res = await fetch(`/api/dm/conversations/${currentUser}`);
+      const list = await res.json();
+      const container = document.getElementById('dm-contact-list');
+      
+      // 全ユーザー一覧なども含められるが既存連絡先を表示
+      container.innerHTML = list.map(c => `
+        <div class="dm-contact" onclick="selectDmUser('${c.username}')">
+          <b>@${c.username}</b> ${c.isOnline ? '<span class="online-badge"></span>' : ''}
+        </div>
+      `).join('') + `<div style="padding:15px; color:var(--text-secondary); font-size:13px;">※プロフィール画面の「DMを送る」からも新しいチャットを開始できます。</div>`;
+    }
+
+    async function selectDmUser(targetUser) {
+      activeDmUser = targetUser;
+      document.getElementById('dm-chat-header').textContent = '@' + targetUser + ' とのメッセージ';
+      fetchMessages(targetUser);
+    }
+
+    async function fetchMessages(targetUser) {
+      if (!targetUser) return;
+      const res = await fetch(`/api/dm/chat?userA=${currentUser}&userB=${targetUser}`);
+      const logs = await res.json();
+      const container = document.getElementById('dm-messages-container');
+      container.innerHTML = logs.map(m => `
+        <div class="dm-bubble ${m.from === currentUser ? 'mine' : 'yours'}">${m.message}</div>
+      `).join('');
+      container.scrollTop = container.scrollHeight;
+    }
+
+    async function sendDm() {
+      const input = document.getElementById('dm-input');
+      const message = input.value.trim();
+      if (!message || !activeDmUser) return;
+
+      const res = await fetch('/api/dm/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fromUser: currentUser, toUser: activeDmUser, message })
+      });
+      const data = await res.json();
+      if (data.success) {
+        input.value = '';
+        fetchMessages(activeDmUser);
+      } else {
+        alert(data.msg || '送信失敗');
       }
+    }
 
-      function setReply(id, user) {
-        activeReplyToId = id;
-        activeRepostOfId = null;
-        document.getElementById('formContextBanner').classList.remove('hidden');
-        document.getElementById('formContextText').innerText = `@${user} への返信モード`;
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+    // 管理パネル（IP・接続ログ確認）
+    async function loadAdminData() {
+      const res = await fetch('/api/admin/data');
+      const data = await res.json();
+      const container = document.getElementById('admin-panel-content');
+      
+      let usersHtml = '<h3>登録ユーザー & IP履歴</h3><table style="width:100%; border-collapse:collapse; margin-bottom:20px;"><tr style="border-bottom:1px solid var(--border-color); text-align:left;"><th>ユーザー</th><th>IPアドレス</th><th>オンライン</th><th>操作</th></tr>';
+      
+      for (let u in data.users) {
+        const usr = data.users[u];
+        const ip = data.ipLogs[u] || usr.ipAddress || '不明';
+        usersHtml += `<tr style="border-bottom:1px solid var(--border-color);">
+          <td style="padding:8px;">@${u}</td>
+          <td>${ip}</td>
+          <td>${usr.isOnline ? '🟢 オンライン' : 'オフライン'}</td>
+          <td><button onclick="adminAction('ban', '${u}')" style="background:var(--danger-color); padding:4px 8px; font-size:12px;">BAN</button></td>
+        </tr>`;
       }
+      usersHtml += '</table>';
 
-      function setRepost(id) {
-        activeRepostOfId = id;
-        activeReplyToId = null;
-        document.getElementById('formContextBanner').classList.remove('hidden');
-        document.getElementById('formContextText').innerText = `引用リポストモード`;
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
+      let logsHtml = '<h3>システム接続・アクションログ</h3><div style="max-height:200px; overflow-y:auto; border:1px solid var(--border-color); padding:10px; font-size:13px;">';
+      (data.logs || []).reverse().forEach(l => {
+        logsHtml += `<div>[${l.timestamp}] <b>@${l.user}</b> - ${l.action} (${l.details || ''})</div>`;
+      });
+      logsHtml += '</div>';
 
-      function clearFormContext() {
-        activeReplyToId = null;
-        activeRepostOfId = null;
-        document.getElementById('formContextBanner').classList.add('hidden');
-      }
+      container.innerHTML = usersHtml + logsHtml;
+    }
 
-      function submitTweet() {
-        const text = document.getElementById('tweetInput').value.trim();
-        if (!text && !uploadedMediaUrl && !activeRepostOfId) return;
-
-        fetch('/api/tweets', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            username: currentMe, textContent: text, mediaUrl: uploadedMediaUrl,
-            replyToId: activeReplyToId, repostOfId: activeRepostOfId
-          })
-        }).then(res => res.json()).then(res => {
-          if (checkBanStatus(res)) return;
-          document.getElementById('tweetInput').value = '';
-          uploadedMediaUrl = "";
-          document.getElementById('localFileInput').value = "";
-          clearFormContext();
-          loadTimeline();
-        });
-      }
-
-      function clickLike(tweetId, btn) {
-        fetch('/api/tweets/like', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ tweetId, username: currentMe })
-        }).then(res => res.json()).then(data => {
-          if (checkBanStatus(data)) return;
-          btn.innerText = `❤️ ${data.likes.length}`;
-        });
-      }
-
-      function deleteTweet(id) {
-        if(!confirm("削除しますか？")) return;
-        fetch(`/api/tweets/${id}`, {
-          method: 'DELETE',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ username: currentMe })
-        }).then(res => res.json()).then(res => {
-          if (checkBanStatus(res)) return;
-          loadTimeline();
-        });
-      }
-
-      function viewProfile(username) {
-        fetch(`/api/profile/${username}?viewer=${currentMe}`)
-          .then(res => res.json())
-          .then(prof => {
-            if (checkBanStatus(prof)) return;
-            document.getElementById('pageTitle').innerText = "プロフィール";
-            document.getElementById('profileHeader').classList.remove('hidden');
-            document.getElementById('timelineSection').classList.remove('hidden');
-            document.getElementById('tweetFormArea').classList.add('hidden');
-            document.getElementById('tabBar').classList.add('hidden');
-
-            const isMe = username === currentMe;
-            const onlineStatusBadge = prof.isOnline 
-              ? '<span class="text-xs text-green-400 font-bold">● オンライン中</span>' 
-              : '<span class="text-xs text-gray-500 font-bold">● オフライン</span>';
-
-            document.getElementById('profileHeader').innerHTML = `
-              <div class="flex justify-between items-start">
-                <div class="flex items-center gap-4">
-                  <div class="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white overflow-hidden">
-                    ${prof.avatarUrl ? `<img src="${prof.avatarUrl}" class="w-full h-full object-cover">` : username[0].toUpperCase()}
-                  </div>
-                  <div>
-                    <div class="flex items-center gap-2">
-                      <h3 class="text-2xl font-bold">@${prof.user}</h3>
-                      ${onlineStatusBadge}
-                    </div>
-                    <p class="text-sm mt-1 text-gray-300">${prof.bio || '自己紹介なし'}</p>
-                  </div>
-                </div>
-                ${!isMe ? `<button onclick="toggleFollow('${username}')" class="bg-white text-black font-bold px-4 py-1.5 rounded-full text-xs">フォロー切替</button>` : ''}
-              </div>
-              <div class="flex gap-4 text-xs text-gray-400 mt-3">
-                <span><strong>${prof.followingCount}</strong> フォロー中</span>
-                <span><strong>${prof.followerCount}</strong> フォロワー</span>
-              </div>
-            `;
-            currentSearchType = 'profile';
-            currentSearchQuery = username;
-            loadTimeline();
-          });
-      }
-
-      function toggleFollow(targetUser) {
-        fetch('/api/follow', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ username: currentMe, targetUser })
-        }).then(() => viewProfile(targetUser));
-      }
-
-      function loadDMConversations() {
-        fetch(`/api/dm/conversations/${currentMe}`)
-          .then(res => res.json())
-          .then(contacts => {
-            const list = document.getElementById('dmContactList');
-            list.innerHTML = contacts.length === 0 ? '<p class="text-xs text-gray-500">DM履歴はありません</p>' : '';
-            contacts.forEach(c => {
-              const dotColor = c.isOnline ? 'bg-green-500' : 'bg-red-500';
-              list.insertAdjacentHTML('beforeend', `
-                <div onclick="openDMChat('${c.username}')" class="p-3 bg-card rounded-xl border border-main flex items-center justify-between cursor-pointer hover:border-blue-500 transition">
-                  <div class="flex items-center gap-3">
-                    <div class="relative w-10 h-10 rounded-full bg-slate-600 flex items-center justify-center font-bold text-white">
-                      ${c.username[0].toUpperCase()}
-                      <span class="absolute bottom-0 right-0 w-3 h-3 ${dotColor} border-2 border-black rounded-full"></span>
-                    </div>
-                    <div>
-                      <p class="font-bold text-sm">@${c.username}</p>
-                      <span class="text-[10px] text-gray-400">${c.isOnline ? 'オンライン' : 'オフライン'}</span>
-                    </div>
-                  </div>
-                </div>
-              `);
-            });
-          });
-      }
-
-      function openDMChat(targetUser) {
-        activeDMTarget = targetUser;
-        document.getElementById('dmTargetTitle').innerText = `@${targetUser} とのチャット`;
-        loadDMLogs();
-      }
-
-      function loadDMLogs(silent = false) {
-        if(!activeDMTarget) return;
-        fetch(`/api/dm/chat?userA=${currentMe}&userB=${activeDMTarget}`)
-          .then(res => res.json())
-          .then(logs => {
-            const box = document.getElementById('dmChatBox');
-            box.innerHTML = "";
-            logs.forEach(l => {
-              const isMe = l.from === currentMe;
-              box.insertAdjacentHTML('beforeend', `
-                <div class="${isMe ? 'text-right' : 'text-left'}">
-                  <div class="inline-block px-3 py-2 rounded-2xl text-xs ${isMe ? 'bg-blue-600 text-white' : 'bg-card border border-main'}">
-                    ${l.message}
-                  </div>
-                </div>
-              `);
-            });
-            if(!silent) box.scrollTop = box.scrollHeight;
-          });
-      }
-
-      function executeSendDM() {
-        const input = document.getElementById('dmInput');
-        const text = input.value.trim();
-        if(!text || !activeDMTarget) return;
-        fetch('/api/dm/send', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ fromUser: currentMe, toUser: activeDMTarget, message: text })
-        }).then(res => res.json()).then(res => {
-          if(res.success === false) return alert(res.msg);
-          input.value = '';
-          loadDMLogs();
-        });
-      }
-
-      function loadNotifications() {
-        fetch(`/api/notifs/${currentMe}`)
-          .then(res => res.json())
-          .then(notifs => {
-            const box = document.getElementById('notifSection');
-            box.innerHTML = notifs.length === 0 ? '<p class="text-sm text-gray-500">通知はありません</p>' : '';
-            notifs.reverse().forEach(n => {
-              box.insertAdjacentHTML('beforeend', `
-                <div class="p-4 bg-card border border-main rounded-xl flex justify-between items-center text-sm">
-                  <span>${n.content}</span>
-                  <span class="text-xs text-gray-500">${n.timestamp}</span>
-                </div>
-              `);
-            });
-          });
-      }
-
-      function renderSettings() {
-        fetch(`/api/profile/${currentMe}`)
-          .then(res => res.json())
-          .then(prof => {
-            document.getElementById('settingsSection').innerHTML = `
-              <div class="space-y-4 max-w-md">
-                <h3 class="font-bold">プロフィール設定</h3>
-                <div>
-                  <label class="text-xs text-gray-400">自己紹介</label>
-                  <textarea id="setBio" class="w-full input-box border rounded-lg p-3 text-sm mt-1 h-24">${prof.bio || ''}</textarea>
-                </div>
-                <div>
-                  <label class="text-xs text-gray-400">アイコン画像URL</label>
-                  <input type="text" id="setAvatar" class="w-full input-box border rounded-lg p-3 text-sm mt-1" value="${prof.avatarUrl || ''}">
-                </div>
-                <div>
-                  <label class="text-xs text-gray-400">DM受信設定</label>
-                  <select id="setDmSetting" class="w-full input-box border rounded-lg p-3 text-sm mt-1">
-                    <option value="allow_all" ${prof.dmSetting==='allow_all'?'selected':''}>すべて許可</option>
-                    <option value="deny_all" ${prof.dmSetting==='deny_all'?'selected':''}>すべて拒否</option>
-                  </select>
-                </div>
-                <button onclick="saveSettings()" class="bg-blue-600 text-white font-bold px-6 py-2 rounded-xl text-sm">保存する</button>
-              </div>
-            `;
-          });
-      }
-
-      function saveSettings() {
-        const bio = document.getElementById('setBio').value;
-        const avatarUrl = document.getElementById('setAvatar').value;
-        const dmSetting = document.getElementById('setDmSetting').value;
-        fetch('/api/profile/update', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ username: currentMe, bio, avatarUrl, dmSetting })
-        }).then(() => {
-          alert("設定を保存しました！");
-          loadUserAvatarDisplay(currentMe, 'myAvatarContainer', 'myAvatarText');
-          loadUserAvatarDisplay(currentMe, 'formAvatarContainer', 'formAvatarText');
-        });
-      }
-
-      function renderAdminPanel() {
-        fetch('/api/admin/data')
-          .then(res => res.json())
-          .then(data => {
-            const sec = document.getElementById('adminSection');
-            let userRows = "";
-            Object.keys(data.users || {}).forEach(u => {
-              const uData = data.users[u];
-              const dotClass = uData.isOnline ? 'bg-green-500' : 'bg-red-500';
-              userRows += `
-                <tr class="border-b border-main text-xs">
-                  <td class="p-2 flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 ${dotClass} rounded-full"></span>
-                    <strong>@${u}</strong> ${uData.isAdmin ? '👑' : ''} ${uData.isModerator ? '🛡️' : ''}
-                  </td>
-                  <td class="p-2">${uData.ipAddress || '不明'}</td>
-                  <td class="p-2"><button onclick="inspectUserDMs('${u}')" class="bg-blue-600 text-white px-2 py-1 rounded font-bold">DM検閲</button></td>
-                </tr>
-              `;
-            });
-
-            let userOptions = Object.keys(data.users || {}).map(u => `<option value="${u}">@${u}</option>`).join('');
-            let logHtml = (data.logs || []).map(l => `<div class="text-xs border-b border-main py-1"><strong>[${l.timestamp}] ${l.user}</strong>: ${l.action} - ${l.details}</div>`).join('');
-
-            sec.innerHTML = `
-              <div class="space-y-6">
-                <div class="bg-card p-4 rounded-xl border border-main space-y-3">
-                  <h3 class="font-bold text-sm">ユーザーモデレーション & IP BAN管理</h3>
-                  <div class="grid grid-cols-2 gap-2">
-                    <select id="adminTarget" class="input-box border rounded-lg p-2 text-xs">${userOptions}</select>
-                    <select id="banDuration" class="input-box border rounded-lg p-2 text-xs">
-                      <option value="permanent">永久BAN</option>
-                      <option value="1">1時間BAN</option>
-                      <option value="24">24時間BAN</option>
-                      <option value="168">7日間BAN</option>
-                    </select>
-                  </div>
-                  <input type="text" id="banReasonInput" class="w-full input-box border rounded-lg p-2 text-xs" placeholder="BAN理由">
-                  <div class="flex gap-2">
-                    <button onclick="execAdminAction('ban')" class="bg-red-600 text-white text-xs px-4 py-2 rounded-lg font-bold">IP BAN執行</button>
-                    <button onclick="execAdminAction('warn')" class="bg-yellow-600 text-white text-xs px-4 py-2 rounded-lg font-bold">警告送信</button>
-                    ${isMyAdmin ? `<button onclick="execAdminAction('mod')" class="bg-purple-600 text-white text-xs px-4 py-2 rounded-lg font-bold">モデレーター切替</button>` : ''}
-                  </div>
-                </div>
-
-                <div class="bg-card p-4 rounded-xl border border-main">
-                  <h3 class="font-bold text-sm mb-3">接続中ユーザー一覧 & IPアドレスモニター</h3>
-                  <div class="max-h-60 overflow-y-auto">
-                    <table class="w-full text-left">
-                      <thead>
-                        <tr class="border-b border-main text-xs text-gray-400">
-                          <th class="p-2">ユーザー</th>
-                          <th class="p-2">IP</th>
-                          <th class="p-2">検閲</th>
-                        </tr>
-                      </thead>
-                      <tbody>${userRows}</tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div id="dmInspectionBox" class="bg-card p-4 rounded-xl border border-main hidden">
-                  <h3 id="inspectTitle" class="font-bold text-sm mb-2 text-red-400">DM検閲ビューワー</h3>
-                  <div id="inspectContent" class="max-h-48 overflow-y-auto space-y-2 text-xs bg-black/20 p-3 rounded-lg"></div>
-                </div>
-
-                <div class="bg-card p-4 rounded-xl border border-main">
-                  <h3 class="font-bold text-sm mb-2">監査ログ</h3>
-                  <div class="max-h-40 overflow-y-auto space-y-1">${logHtml || '<p class="text-xs text-gray-500">ログなし</p>'}</div>
-                </div>
-              </div>
-            `;
-          });
-      }
-
-      function inspectUserDMs(targetUser) {
-        fetch('/api/admin/data')
-          .then(res => res.json())
-          .then(data => {
-            const box = document.getElementById('dmInspectionBox');
-            const content = document.getElementById('inspectContent');
-            document.getElementById('inspectTitle').innerText = `@${targetUser} のDM履歴`;
-            box.classList.remove('hidden');
-            content.innerHTML = "";
-            const targetDms = (data.allDms || []).filter(d => d.from === targetUser || d.to === targetUser);
-            if(targetDms.length === 0) {
-              content.innerHTML = '<p class="text-gray-500">DM履歴はありません</p>';
-              return;
-            }
-            targetDms.forEach(d => {
-              content.insertAdjacentHTML('beforeend', `
-                <div class="border-b border-main pb-1">
-                  <span class="text-gray-400">[${d.timestamp}]</span> <strong>${d.from}</strong> ➔ <strong>${d.to}</strong>: 
-                  <span class="text-white">${d.message}</span>
-                </div>
-              `);
-            });
-          });
-      }
-
-      function execAdminAction(action) {
-        const targetUser = document.getElementById('adminTarget').value;
-        const banDurationHours = document.getElementById('banDuration') ? document.getElementById('banDuration').value : 'permanent';
-        const banReason = document.getElementById('banReasonInput') ? document.getElementById('banReasonInput').value : '規約違反';
-
-        fetch('/api/admin/action', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ action, targetUser, adminUser: currentMe, banDurationHours, banReason })
-        }).then(res => res.json()).then(res => {
-          alert(res.success ? "実行しました" : res.msg);
-          renderAdminPanel();
-        });
-      }
-
-      function executeGlobalSearch() {
-        const q = document.getElementById('globalSearchInput').value.trim();
-        if(!q) return;
-        currentSearchType = q.startsWith('#') ? 'hashtag' : 'keyword';
-        currentSearchQuery = q.startsWith('#') ? q.substring(1) : q;
-        loadTimeline();
-      }
-
-      function toggleThemeMode() {
-        document.body.className = document.body.className.includes('dark') ? 'theme-light font-sans antialiased' : 'theme-dark font-sans antialiased';
-      }
-    </script>
-  </body>
+    async function adminAction(action, targetUser) {
+      if (!confirm(`@${targetUser} をBANしますか？`)) return;
+      await fetch('/api/admin/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, targetUser, adminUser: currentUser, banDurationHours: 'permanent' })
+      });
+      loadAdminData();
+    }
+  </script>
+</body>
 </html>
