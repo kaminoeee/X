@@ -2,7 +2,7 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8">
-    <title>X Ultra - デスクトップ版</title>
+    <title>X Ultra 移植版</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       .theme-dark { background-color: #0b0f19; color: #f3f4f6; }
@@ -16,37 +16,37 @@
       .theme-light .input-box { background-color: #ffffff; color: black; border-color: #d1d5db; }
 
       .tab-active { color: #3b82f6; border-bottom: 2px solid #3b82f6; }
-      .nav-btn-active { color: #3b82f6; font-weight: bold; }
     </style>
   </head>
   <body class="theme-dark font-sans antialiased min-h-screen">
 
-    <!-- ─── 認証ウォール ─── -->
+    <!-- 認証ウォール -->
     <div id="authWall" class="fixed inset-0 bg-[#0b0f19] flex flex-col items-center justify-center z-50 p-4">
       <div class="mb-6 text-4xl font-extrabold tracking-widest text-white">
-        <span class="text-blue-500">X</span> <span class="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400">Desktop Ultra</span>
+        <span class="text-blue-500">X</span> <span class="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400">Complete Ultra</span>
       </div>
       <div class="bg-card p-8 rounded-2xl w-full max-w-md border border-main shadow-2xl">
         <h2 id="authTitle" class="text-xl font-bold mb-2 text-center">Xにログイン</h2>
         <div class="space-y-4 mt-4">
           <input type="text" id="authUser" class="w-full input-box border rounded-lg p-3 text-sm focus:outline-none" placeholder="ユーザーID">
           <input type="password" id="authPass" class="w-full input-box border rounded-lg p-3 text-sm focus:outline-none" placeholder="パスワード">
+          <div id="adminKeyWrapper" class="hidden">
+            <input type="password" id="authAdminKey" class="w-full input-box border rounded-lg p-3 text-sm focus:outline-none" placeholder="管理者シークレットキー">
+          </div>
           <button onclick="submitAuth()" id="authBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition">ログイン</button>
           <button onclick="toggleAuthMode()" id="toggleModeBtn" class="w-full text-xs text-blue-400 text-center block hover:underline">新規アカウントを作成する</button>
         </div>
       </div>
     </div>
 
-    <!-- ─── メインアプリ（PC向け3ペイン風レイアウト） ─── -->
+    <!-- メインレイアウト -->
     <div id="mainApp" class="max-w-6xl mx-auto min-h-screen grid grid-cols-1 md:grid-cols-4 border-l border-r border-main hidden">
       
-      <!-- サイドナビゲーション (PC左カラム) -->
+      <!-- サイドナビ -->
       <aside class="col-span-1 border-r border-main p-4 flex flex-col justify-between sticky top-0 h-screen">
         <div class="space-y-6">
           <h1 class="text-2xl font-black text-blue-500 tracking-wider cursor-pointer" onclick="navigateTo('home')">𝕏 Ultra</h1>
-          <nav id="bottomNavContainer" class="space-y-2 flex flex-col text-sm font-semibold">
-            <!-- 動的生成 -->
-          </nav>
+          <nav id="bottomNavContainer" class="space-y-2 flex flex-col text-sm font-semibold"></nav>
         </div>
         <div class="flex items-center gap-3 p-2 bg-card rounded-xl border border-main">
           <div id="myAvatar" class="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white overflow-hidden">?</div>
@@ -57,36 +57,31 @@
         </div>
       </aside>
 
-      <!-- メインコンテンツ (PC中央～右カラム) -->
+      <!-- メイン画面 -->
       <main class="col-span-3 pb-24 min-h-screen border-r border-main">
-        <!-- ヘッダー -->
         <header class="sticky top-0 bg-inherit backdrop-blur border-b border-main z-10 px-6 py-4 flex justify-between items-center">
           <h2 id="pageTitle" class="text-xl font-bold">ホーム</h2>
           <div class="flex items-center gap-3">
-            <input type="text" id="globalSearchInput" class="input-box border rounded-full px-4 py-1.5 text-xs focus:outline-none w-64" placeholder="キーワード・#タグ検索">
-            <button onclick="executeGlobalSearch()" class="bg-blue-600 text-white text-xs px-4 py-1.5 rounded-full font-bold">検索</button>
+            <input type="text" id="globalSearchInput" class="input-box border rounded-full px-4 py-1.5 text-xs focus:outline-none w-48" placeholder="検索...">
+            <button onclick="executeGlobalSearch()" class="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-full font-bold">検索</button>
             <button onclick="toggleThemeMode()" class="text-xs bg-card px-3 py-1.5 rounded-lg border border-main">🌓 テーマ</button>
           </div>
         </header>
 
-        <!-- タブバー -->
         <div id="tabBar" class="flex border-b border-main text-center font-bold text-sm">
           <button onclick="switchTab('all')" id="tabAll" class="flex-1 py-3 tab-active">おすすめ</button>
           <button onclick="switchTab('follow')" id="tabFollow" class="flex-1 py-3 text-gray-500">フォロー中</button>
         </div>
 
-        <!-- 各種セクション -->
         <div id="profileHeader" class="border-b border-main p-6 bg-card/20 hidden"></div>
         <div id="settingsSection" class="hidden p-6 space-y-6"></div>
         
-        <!-- DMセクション（DM一覧 ＆ チャット） -->
+        <!-- DMセクション -->
         <div id="dmSection" class="hidden grid grid-cols-3 h-[calc(100vh-80px)]">
-          <!-- DM相手一覧（オンラインステータス付き） -->
           <div class="col-span-1 border-r border-main p-4 overflow-y-auto">
             <h3 class="font-bold text-sm mb-3">📬 DMメッセージ一覧</h3>
             <div id="dmContactList" class="space-y-2"></div>
           </div>
-          <!-- チャット画面 -->
           <div class="col-span-2 flex flex-col p-4 h-full">
             <h3 id="dmTargetTitle" class="font-bold border-b border-main pb-2 mb-2 text-sm">チャット</h3>
             <div id="dmChatBox" class="flex-1 overflow-y-auto space-y-3 p-3 bg-card/30 rounded-xl border border-main mb-3 flex flex-col"></div>
@@ -98,20 +93,26 @@
         </div>
 
         <div id="notifSection" class="hidden p-6 space-y-3"></div>
-        
-        <!-- 投稿フォーム -->
-        <div id="tweetFormArea" class="p-6 border-b border-main flex gap-4">
-          <div class="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white text-lg overflow-hidden flex-shrink-0" id="formAvatar">?</div>
-          <div class="flex-1 space-y-3">
-            <textarea id="tweetInput" class="w-full bg-transparent placeholder-gray-500 text-base resize-none focus:outline-none h-20" placeholder="いまどうしてる？"></textarea>
-            <div class="flex justify-between items-center pt-2 border-t border-main">
-              <input type="file" id="localFileInput" accept="image/*,video/*" class="text-xs text-gray-400">
-              <button onclick="submitTweet()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-2 rounded-full text-sm">ポストする</button>
+        <div id="adminSection" class="hidden p-6 space-y-6"></div>
+
+        <!-- 投稿フォーム (バナーエリア付き) -->
+        <div id="tweetFormArea" class="p-6 border-b border-main space-y-3">
+          <div id="formContextBanner" class="hidden bg-blue-900/40 text-blue-300 text-xs px-3 py-1.5 rounded-lg flex justify-between items-center">
+            <span id="formContextText">返信中</span>
+            <button onclick="clearFormContext()" class="text-white font-bold">&times;</button>
+          </div>
+          <div class="flex gap-4">
+            <div class="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white overflow-hidden flex-shrink-0" id="formAvatar">?</div>
+            <div class="flex-1 space-y-3">
+              <textarea id="tweetInput" class="w-full bg-transparent placeholder-gray-500 text-base resize-none focus:outline-none h-20" placeholder="いまどうしてる？"></textarea>
+              <div class="flex justify-between items-center pt-2 border-t border-main">
+                <input type="file" id="localFileInput" accept="image/*,video/*" class="text-xs text-gray-400" onchange="handleFileSelect(event)">
+                <button onclick="submitTweet()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-6 py-2 rounded-full text-sm">ポストする</button>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- タイムライン -->
         <div id="timelineSection">
           <div id="timeline" class="divide-y divide-main"></div>
           <div class="p-6 text-center">
@@ -123,11 +124,16 @@
 
     <script>
       let currentMe = "";
+      let isMyAdmin = false;
+      let isMyMod = false;
       let activeDMTarget = "";
       let currentSearchType = "all";
       let currentSearchQuery = "";
       let timelineOffset = 0;
       const timelineLimit = 20;
+      let activeReplyToId = null;
+      let activeRepostOfId = null;
+      let uploadedMediaUrl = "";
       let autoRefreshTimer = null;
 
       window.onload = function() {
@@ -139,7 +145,7 @@
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ username: user, password: token, isHashed: true })
           }).then(res => res.json()).then(res => {
-            if (res.success) launchApp(user);
+            if (res.success) launchApp(user, res.isAdmin, res.isModerator);
             else localStorage.clear();
           });
         }
@@ -147,12 +153,20 @@
 
       function toggleAuthMode() {
         const title = document.getElementById('authTitle');
-        title.innerText = title.innerText.includes('ログイン') ? 'アカウント作成' : 'Xにログイン';
+        const keyWrap = document.getElementById('adminKeyWrapper');
+        if(title.innerText.includes('ログイン')) {
+          title.innerText = 'アカウント作成';
+          keyWrap.classList.remove('hidden');
+        } else {
+          title.innerText = 'Xにログイン';
+          keyWrap.classList.add('hidden');
+        }
       }
 
       function submitAuth() {
         const user = document.getElementById('authUser').value.trim();
         const pass = document.getElementById('authPass').value.trim();
+        const adminKey = document.getElementById('authAdminKey').value.trim();
         if(!user || !pass) return alert("入力してください");
 
         const isCreate = document.getElementById('authTitle').innerText.includes('作成');
@@ -161,14 +175,14 @@
         fetch(endpoint, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ username: user, password: pass })
+          body: JSON.stringify({ username: user, password: pass, adminPassword: adminKey })
         }).then(res => res.json()).then(res => {
           if (res.success) {
             if (isCreate) { alert(res.msg); toggleAuthMode(); }
             else {
               localStorage.setItem('X_RESP_USER', user);
               localStorage.setItem('X_RESP_TOKEN', res.token);
-              launchApp(user);
+              launchApp(user, res.isAdmin, res.isModerator);
             }
           } else {
             alert(res.msg);
@@ -176,8 +190,10 @@
         });
       }
 
-      function launchApp(user) {
+      function launchApp(user, isAdmin, isMod) {
         currentMe = user;
+        isMyAdmin = isAdmin;
+        isMyMod = isMod;
         document.getElementById('authWall').classList.add('hidden');
         document.getElementById('mainApp').classList.remove('hidden');
         document.getElementById('myUsernameDisplay').innerText = "@" + currentMe;
@@ -185,26 +201,30 @@
         buildNavigation();
         navigateTo('home');
 
-        // 投稿の自動更新ループ (10秒ごと)
         if(autoRefreshTimer) clearInterval(autoRefreshTimer);
         autoRefreshTimer = setInterval(() => {
           if(currentSearchType === 'all' && !document.getElementById('timelineSection').classList.contains('hidden')) {
-            loadTimeline(false, true); // バックグラウンドサイレント更新
+            loadTimeline(false, true);
           }
         }, 10000);
       }
 
       function buildNavigation() {
-        const container = document.getElementById('bottomNavContainer');
-        container.innerHTML = `
-          <button id="navHome" onclick="navigateTo('home')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-card transition text-inherit"><span class="text-xl">🏠</span><span>ホーム</span></button>
-          <button id="navDm" onclick="navigateTo('dm')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-card transition text-inherit"><span class="text-xl">📬</span><span>DM</span></button>
-          <button id="navProfile" onclick="navigateTo('profile')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-card transition text-inherit"><span class="text-xl">👤</span><span>プロフィール</span></button>
+        let navHtml = `
+          <button onclick="navigateTo('home')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-card transition text-inherit"><span class="text-xl">🏠</span><span>ホーム</span></button>
+          <button onclick="navigateTo('notif')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-card transition text-inherit"><span class="text-xl">🔔</span><span>通知</span></button>
+          <button onclick="navigateTo('dm')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-card transition text-inherit"><span class="text-xl">📬</span><span>DM</span></button>
+          <button onclick="navigateTo('profile')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-card transition text-inherit"><span class="text-xl">👤</span><span>プロフィール</span></button>
+          <button onclick="navigateTo('settings')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-card transition text-inherit"><span class="text-xl">⚙️</span><span>設定</span></button>
         `;
+        if (isMyAdmin || isMyMod) {
+          navHtml += `<button onclick="navigateTo('admin')" class="flex items-center gap-3 p-3 rounded-xl hover:bg-card transition text-red-400 font-bold"><span class="text-xl">🛡️</span><span>管理パネル</span></button>`;
+        }
+        document.getElementById('bottomNavContainer').innerHTML = navHtml;
       }
 
       function navigateTo(target) {
-        ['profileHeader', 'settingsSection', 'dmSection', 'notifSection', 'tweetFormArea', 'timelineSection', 'tabBar'].forEach(id => {
+        ['profileHeader', 'settingsSection', 'dmSection', 'notifSection', 'adminSection', 'tweetFormArea', 'timelineSection', 'tabBar'].forEach(id => {
           document.getElementById(id).classList.add('hidden');
         });
 
@@ -220,9 +240,29 @@
           document.getElementById('pageTitle').innerText = "ダイレクトメッセージ";
           document.getElementById('dmSection').classList.remove('hidden');
           loadDMConversations();
+        } else if (target === 'notif') {
+          document.getElementById('pageTitle').innerText = "通知";
+          document.getElementById('notifSection').classList.remove('hidden');
+          loadNotifications();
+        } else if (target === 'settings') {
+          document.getElementById('pageTitle').innerText = "設定・プロフィール編集";
+          document.getElementById('settingsSection').classList.remove('hidden');
+          renderSettings();
         } else if (target === 'profile') {
           viewProfile(currentMe);
+        } else if (target === 'admin') {
+          document.getElementById('pageTitle').innerText = "モデレーション・管理";
+          document.getElementById('adminSection').classList.remove('hidden');
+          renderAdminPanel();
         }
+      }
+
+      function switchTab(type) {
+        currentSearchType = type;
+        document.getElementById('tabAll').className = type === 'all' ? 'flex-1 py-3 tab-active' : 'flex-1 py-3 text-gray-500';
+        document.getElementById('tabFollow').className = type === 'follow' ? 'flex-1 py-3 tab-active' : 'flex-1 py-3 text-gray-500';
+        timelineOffset = 0;
+        loadTimeline(false);
       }
 
       function loadTimeline(appendMode = false, silent = false) {
@@ -241,16 +281,40 @@
         if (!appendMode) container.innerHTML = '';
         tweets.forEach(t => {
           const isLiked = t.likes && t.likes.includes(currentMe);
-          container.insertAdjacentHTML('beforeend', `
-            <div class="p-6 hover:bg-card/20 transition flex gap-4">
-              <div class="w-12 h-12 rounded-full bg-slate-600 flex items-center justify-center font-bold text-white flex-shrink-0">${t.user[0].toUpperCase()}</div>
-              <div class="flex-1">
-                <div class="flex items-center gap-2 text-sm">
-                  <span class="font-bold">${t.user}</span>
-                  <span class="text-gray-500 text-xs">${t.timestamp}</span>
+          const canDelete = (t.user === currentMe || isMyAdmin || isMyMod);
+          
+          let repostHtml = '';
+          if (t.repostData) {
+            const rd = t.repostData;
+            repostHtml = `
+              <div class="mt-3 border border-main rounded-xl p-3 bg-card/50">
+                <div class="flex items-center gap-2 text-xs">
+                  <span class="font-bold">@${rd.user}</span>
+                  <span class="text-gray-500">${rd.timestamp}</span>
                 </div>
-                <p class="mt-2 text-sm whitespace-pre-wrap">${t.content}</p>
+                <p class="mt-1 text-xs">${rd.content}</p>
+              </div>
+            `;
+          }
+
+          container.insertAdjacentHTML('beforeend', `
+            <div class="p-6 hover:bg-card/20 transition flex gap-4" id="tweet_${t.id}">
+              <div class="w-12 h-12 rounded-full bg-slate-600 flex items-center justify-center font-bold text-white flex-shrink-0 cursor-pointer" onclick="viewProfile('${t.user}')">${t.user[0].toUpperCase()}</div>
+              <div class="flex-1">
+                <div class="flex items-center justify-between text-sm">
+                  <div class="flex items-center gap-2">
+                    <span class="font-bold cursor-pointer hover:underline" onclick="viewProfile('${t.user}')">@${t.user}</span>
+                    <span class="text-gray-500 text-xs">${t.timestamp}</span>
+                  </div>
+                  ${canDelete ? `<button onclick="deleteTweet('${t.id}')" class="text-xs text-red-400 hover:underline">削除</button>` : ''}
+                </div>
+                ${t.replyToUser ? `<p class="text-xs text-blue-400 mt-1">@${t.replyToUser} への返信</p>` : ''}
+                <p class="mt-2 text-sm whitespace-pre-wrap">${formatContent(t.content)}</p>
+                ${t.mediaUrl ? `<div class="mt-3"><img src="${t.mediaUrl}" class="max-h-60 rounded-xl border border-main"></div>` : ''}
+                ${repostHtml}
                 <div class="flex gap-6 mt-3 text-xs text-gray-500">
+                  <button onclick="setReply('${t.id}', '${t.user}')" class="hover:text-blue-400">💬 返信</button>
+                  <button onclick="setRepost('${t.id}')" class="hover:text-green-400">🔄 引用</button>
                   <button onclick="clickLike('${t.id}', this)" class="${isLiked?'text-pink-500 font-bold':'hover:text-pink-500'}">❤️ ${t.likes ? t.likes.length : 0}</button>
                 </div>
               </div>
@@ -259,15 +323,59 @@
         });
       }
 
+      function formatContent(text) {
+        return text.replace(/(#\S+)/g, '<span class="text-blue-400 font-bold">$&</span>');
+      }
+
+      function handleFileSelect(event) {
+        const file = event.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) { uploadedMediaUrl = e.target.result; };
+        reader.readAsDataURL(file);
+      }
+
+      function setReply(id, user) {
+        activeReplyToId = id;
+        activeRepostOfId = null;
+        document.getElementById('formContextBanner').classList.remove('hidden');
+        document.getElementById('formContextText').innerText = `@${user} への返信モード`;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      function setRepost(id) {
+        activeRepostOfId = id;
+        activeReplyToId = null;
+        document.getElementById('formContextBanner').classList.remove('hidden');
+        document.getElementById('formContextText').innerText = `引用リポストモード`;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      function clearFormContext() {
+        activeReplyToId = null;
+        activeRepostOfId = null;
+        document.getElementById('formContextBanner').classList.add('hidden');
+      }
+
       function submitTweet() {
         const text = document.getElementById('tweetInput').value.trim();
-        if (!text) return;
+        if (!text && !uploadedMediaUrl && !activeRepostOfId) return;
+
         fetch('/api/tweets', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ username: currentMe, textContent: text })
+          body: JSON.stringify({
+            username: currentMe,
+            textContent: text,
+            mediaUrl: uploadedMediaUrl,
+            replyToId: activeReplyToId,
+            repostOfId: activeRepostOfId
+          })
         }).then(() => {
           document.getElementById('tweetInput').value = '';
+          uploadedMediaUrl = "";
+          document.getElementById('localFileInput').value = "";
+          clearFormContext();
           loadTimeline(false);
         });
       }
@@ -282,29 +390,72 @@
         });
       }
 
-      // ─── DM一覧 ＆ オンラインステータスリアルタイム表示 ───
+      function deleteTweet(id) {
+        if(!confirm("削除しますか？")) return;
+        fetch(`/api/tweets/${id}`, {
+          method: 'DELETE',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ username: currentMe })
+        }).then(() => loadTimeline(false));
+      }
+
+      function viewProfile(username) {
+        fetch(`/api/profile/${username}?viewer=${currentMe}`)
+          .then(res => res.json())
+          .then(prof => {
+            document.getElementById('pageTitle').innerText = "プロフィール";
+            document.getElementById('profileHeader').classList.remove('hidden');
+            document.getElementById('timelineSection').classList.remove('hidden');
+            document.getElementById('tweetFormArea').classList.add('hidden');
+            document.getElementById('tabBar').classList.add('hidden');
+
+            const isMe = username === currentMe;
+            document.getElementById('profileHeader').innerHTML = `
+              <div class="flex justify-between items-start">
+                <div>
+                  <h3 class="text-2xl font-bold">@${prof.user}</h3>
+                  <p class="text-sm mt-1 text-gray-300">${prof.bio || '自己紹介なし'}</p>
+                </div>
+                ${!isMe ? `<button onclick="toggleFollow('${username}')" id="followBtn" class="bg-white text-black font-bold px-4 py-1.5 rounded-full text-xs">フォロー切替</button>` : ''}
+              </div>
+              <div class="flex gap-4 text-xs text-gray-400 mt-3">
+                <span><strong>${prof.followingCount}</strong> フォロー中</span>
+                <span><strong>${prof.followerCount}</strong> フォロワー</span>
+              </div>
+            `;
+            currentSearchType = 'profile';
+            currentSearchQuery = username;
+            timelineOffset = 0;
+            loadTimeline(false);
+          });
+      }
+
+      function toggleFollow(targetUser) {
+        fetch('/api/follow', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ username: currentMe, targetUser })
+        }).then(() => viewProfile(targetUser));
+      }
+
       function loadDMConversations() {
         fetch(`/api/dm/conversations/${currentMe}`)
           .then(res => res.json())
           .then(contacts => {
             const list = document.getElementById('dmContactList');
             list.innerHTML = contacts.length === 0 ? '<p class="text-xs text-gray-500">DM履歴はありません</p>' : '';
-            
             contacts.forEach(c => {
-              // オンライン(緑の点) / オフライン(赤の点)
               const dotColor = c.isOnline ? 'bg-green-500' : 'bg-red-500';
-              const statusText = c.isOnline ? 'オンライン' : 'オフライン';
-
               list.insertAdjacentHTML('beforeend', `
                 <div onclick="openDMChat('${c.username}')" class="p-3 bg-card rounded-xl border border-main flex items-center justify-between cursor-pointer hover:border-blue-500 transition">
                   <div class="flex items-center gap-3">
                     <div class="relative w-10 h-10 rounded-full bg-slate-600 flex items-center justify-center font-bold text-white">
                       ${c.username[0].toUpperCase()}
-                      <span class="absolute bottom-0 right-0 w-3 h-3 ${dotColor} border-2 border-black rounded-full" title="${statusText}"></span>
+                      <span class="absolute bottom-0 right-0 w-3 h-3 ${dotColor} border-2 border-black rounded-full"></span>
                     </div>
                     <div>
                       <p class="font-bold text-sm">@${c.username}</p>
-                      <span class="text-[10px] text-gray-400">${statusText}</span>
+                      <span class="text-[10px] text-gray-400">${c.isOnline ? 'オンライン' : 'オフライン'}</span>
                     </div>
                   </div>
                 </div>
@@ -344,37 +495,122 @@
         const input = document.getElementById('dmInput');
         const text = input.value.trim();
         if(!text || !activeDMTarget) return;
-
         fetch('/api/dm/send', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({ fromUser: currentMe, toUser: activeDMTarget, message: text })
-        }).then(() => {
-          input.value = '';
-          loadDMLogs();
+        }).then(() => { input.value = ''; loadDMLogs(); });
+      }
+
+      function loadNotifications() {
+        fetch(`/api/notifs/${currentMe}`)
+          .then(res => res.json())
+          .then(notifs => {
+            const box = document.getElementById('notifSection');
+            box.innerHTML = notifs.length === 0 ? '<p class="text-sm text-gray-500">通知はありません</p>' : '';
+            notifs.reverse().forEach(n => {
+              box.insertAdjacentHTML('beforeend', `
+                <div class="p-4 bg-card border border-main rounded-xl flex justify-between items-center text-sm">
+                  <span>${n.content}</span>
+                  <span class="text-xs text-gray-500">${n.timestamp}</span>
+                </div>
+              `);
+            });
+          });
+      }
+
+      function renderSettings() {
+        fetch(`/api/profile/${currentMe}`)
+          .then(res => res.json())
+          .then(prof => {
+            document.getElementById('settingsSection').innerHTML = `
+              <div class="space-y-4 max-w-md">
+                <h3 class="font-bold">プロフィール設定</h3>
+                <div>
+                  <label class="text-xs text-gray-400">自己紹介</label>
+                  <textarea id="setBio" class="w-full input-box border rounded-lg p-3 text-sm mt-1 h-24">${prof.bio}</textarea>
+                </div>
+                <div>
+                  <label class="text-xs text-gray-400">アバター画像URL</label>
+                  <input type="text" id="setAvatar" class="w-full input-box border rounded-lg p-3 text-sm mt-1" value="${prof.avatarUrl}">
+                </div>
+                <div>
+                  <label class="text-xs text-gray-400">DM受信設定</label>
+                  <select id="setDmSetting" class="w-full input-box border rounded-lg p-3 text-sm mt-1">
+                    <option value="allow_all" ${prof.dmSetting==='allow_all'?'selected':''}>すべて許可</option>
+                    <option value="deny_all" ${prof.dmSetting==='deny_all'?'selected':''}>すべて拒否</option>
+                  </select>
+                </div>
+                <button onclick="saveSettings()" class="bg-blue-600 text-white font-bold px-6 py-2 rounded-xl text-sm">保存する</button>
+              </div>
+            `;
+          });
+      }
+
+      function saveSettings() {
+        const bio = document.getElementById('setBio').value;
+        const avatarUrl = document.getElementById('setAvatar').value;
+        const dmSetting = document.getElementById('setDmSetting').value;
+        fetch('/api/profile/update', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ username: currentMe, bio, avatarUrl, dmSetting })
+        }).then(() => alert("設定を保存しました！"));
+      }
+
+      function renderAdminPanel() {
+        fetch('/api/admin/data')
+          .then(res => res.json())
+          .then(data => {
+            const sec = document.getElementById('adminSection');
+            let userOptions = Object.keys(data.users).map(u => `<option value="${u}">@${u}</option>`).join('');
+            
+            let logHtml = data.logs.map(l => `<div class="text-xs border-b border-main py-1"><strong>[${l.timestamp}] ${l.user}</strong>: ${l.action} - ${l.details}</div>`).join('');
+
+            sec.innerHTML = `
+              <div class="space-y-6">
+                <div class="bg-card p-4 rounded-xl border border-main space-y-3">
+                  <h3 class="font-bold text-sm">ユーザーモデレーション</h3>
+                  <div class="flex gap-2">
+                    <select id="adminTarget" class="input-box border rounded-lg p-2 text-xs">${userOptions}</select>
+                    <input type="text" id="adminExtra" class="flex-1 input-box border rounded-lg p-2 text-xs" placeholder="警告理由など">
+                  </div>
+                  <div class="flex gap-2">
+                    <button onclick="execAdminAction('warn')" class="bg-yellow-600 text-white text-xs px-4 py-2 rounded-lg font-bold">警告を送信</button>
+                    ${isMyAdmin ? `<button onclick="execAdminAction('mod')" class="bg-purple-600 text-white text-xs px-4 py-2 rounded-lg font-bold">モデレーター切替</button>` : ''}
+                    ${isMyAdmin ? `<button onclick="execAdminAction('verify')" class="bg-blue-600 text-white text-xs px-4 py-2 rounded-lg font-bold">認証バッジ切替</button>` : ''}
+                    ${isMyAdmin ? `<button onclick="execAdminAction('ban')" class="bg-red-600 text-white text-xs px-4 py-2 rounded-lg font-bold">アカウントBAN</button>` : ''}
+                  </div>
+                </div>
+                <div class="bg-card p-4 rounded-xl border border-main">
+                  <h3 class="font-bold text-sm mb-2">監査ログ</h3>
+                  <div class="max-h-60 overflow-y-auto space-y-1">${logHtml || '<p class="text-xs text-gray-500">ログなし</p>'}</div>
+                </div>
+              </div>
+            `;
+          });
+      }
+
+      function execAdminAction(action) {
+        const targetUser = document.getElementById('adminTarget').value;
+        const extra = document.getElementById('adminExtra').value;
+        fetch('/api/admin/action', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ action, targetUser, adminUser: currentMe, extra })
+        }).then(res => res.json()).then(res => {
+          alert(res.success ? "実行しました" : res.msg);
+          renderAdminPanel();
         });
       }
 
-      function viewProfile(username) {
-        fetch(`/api/profile/${username}?viewer=${currentMe}`)
-          .then(res => res.json())
-          .then(prof => {
-            document.getElementById('pageTitle').innerText = "プロフィール";
-            document.getElementById('profileHeader').classList.remove('hidden');
-            document.getElementById('timelineSection').classList.remove('hidden');
-            document.getElementById('profileHeader').innerHTML = `
-              <h3 class="text-2xl font-bold">@${prof.user}</h3>
-              <p class="text-sm mt-1 text-gray-300">${prof.bio}</p>
-              <div class="flex gap-4 text-xs text-gray-400 mt-2">
-                <span><strong>${prof.followingCount}</strong> フォロー中</span>
-                <span><strong>${prof.followerCount}</strong> フォロワー</span>
-              </div>
-            `;
-            currentSearchType = 'profile';
-            currentSearchQuery = username;
-            timelineOffset = 0;
-            loadTimeline(false);
-          });
+      function executeGlobalSearch() {
+        const q = document.getElementById('globalSearchInput').value.trim();
+        if(!q) return;
+        currentSearchType = q.startsWith('#') ? 'hashtag' : 'keyword';
+        currentSearchQuery = q.startsWith('#') ? q.substring(1) : q;
+        timelineOffset = 0;
+        loadTimeline(false);
       }
 
       function toggleThemeMode() {
