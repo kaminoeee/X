@@ -7,6 +7,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// グローバルデータベースの初期化と復元強化
 if (!global._xUltraDb) {
   global._xUltraDb = {
     users: {},
@@ -14,7 +15,8 @@ if (!global._xUltraDb) {
     dms: [],
     notifs: [],
     bans: [],
-    logs: []
+    logs: [],
+    ipLogs: {} // ユーザーごとのIP履歴を保持
   };
 }
 let db = global._xUltraDb;
@@ -45,15 +47,16 @@ function saveData() {
 
 loadData();
 
-// オンライン状態のタイムアウトを長め (60秒) にして「すぐ0人になるバグ」を解消
+// 定期的なファイル同期とオンライン判定の調整
 setInterval(() => {
   const now = Date.now();
   if (!db.users) return;
   Object.keys(db.users).forEach(u => {
-    if (db.users[u].isOnline && (now - (db.users[u].lastSeen || 0) > 60000)) {
+    if (db.users[u].isOnline && (now - (db.users[u].lastSeen || 0) > 90000)) {
       db.users[u].isOnline = false;
     }
   });
+  saveData(); // 定期的に/tmpへバックアップ書き込み
 }, 10000);
 
 function checkBan(req, res, next) {
@@ -80,6 +83,7 @@ function checkBan(req, res, next) {
 app.use(checkBan);
 
 app.post('/api/register', (req, res) => {
+  loadData(); // 読み込み最新化
   const { username, password, adminPassword } = req.body;
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
   if (!username || !password) return res.json({ success: false, msg: '入力値が不正です' });
@@ -113,6 +117,9 @@ app.post('/api/register', (req, res) => {
     lastSeen: Date.now()
   };
 
+  if (!db.ipLogs) db.ipLogs = {};
+  db.ipLogs[username] = ip;
+
   if (!db.logs) db.logs = [];
   db.logs.push({ timestamp: new Date().toLocaleString(), user: username, action: 'REGISTER', details: `IP: ${ip}` });
   saveData();
@@ -120,6 +127,7 @@ app.post('/api/register', (req, res) => {
 });
 
 app.post('/api/login', (req, res) => {
+  loadData();
   const { username, password } = req.body;
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
   if (!db.users) db.users = {};
@@ -132,12 +140,17 @@ app.post('/api/login', (req, res) => {
   user.isOnline = true;
   user.lastSeen = Date.now();
   user.ipAddress = ip;
+
+  if (!db.ipLogs) db.ipLogs = {};
+  db.ipLogs[username] = ip;
+
   saveData();
 
   res.json({ success: true, token: password, isAdmin: user.isAdmin, isModerator: user.isModerator });
 });
 
 app.get('/api/online-users', (req, res) => {
+  loadData();
   if (!db.users) db.users = {};
   const onlineList = Object.keys(db.users)
     .filter(u => db.users[u] && db.users[u].isOnline)
@@ -146,6 +159,7 @@ app.get('/api/online-users', (req, res) => {
 });
 
 app.get('/api/tweets', (req, res) => {
+  loadData();
   const { searchType, searchQuery, currentMe } = req.query;
   let results = [...(db.tweets || [])].reverse();
 
@@ -172,6 +186,7 @@ app.get('/api/tweets', (req, res) => {
 });
 
 app.post('/api/tweets', (req, res) => {
+  loadData();
   const { username, textContent, mediaUrl, replyToId, repostOfId } = req.body;
   if (!db.users) db.users = {};
   const userObj = db.users[username];
@@ -206,6 +221,7 @@ app.post('/api/tweets', (req, res) => {
 });
 
 app.post('/api/tweets/like', (req, res) => {
+  loadData();
   const { tweetId, username } = req.body;
   const tweet = (db.tweets || []).find(t => t.id === tweetId);
   if (!tweet) return res.status(404).json({});
@@ -222,6 +238,7 @@ app.post('/api/tweets/like', (req, res) => {
 });
 
 app.delete('/api/tweets/:id', (req, res) => {
+  loadData();
   const { username } = req.body;
   const tweetId = req.params.id;
   const tweet = (db.tweets || []).find(t => t.id === tweetId);
@@ -237,6 +254,7 @@ app.delete('/api/tweets/:id', (req, res) => {
 });
 
 app.get('/api/profile/:username', (req, res) => {
+  loadData();
   const target = req.params.username;
   const viewer = req.query.viewer;
   if (!db.users) db.users = {};
@@ -256,6 +274,7 @@ app.get('/api/profile/:username', (req, res) => {
 });
 
 app.post('/api/profile/update', (req, res) => {
+  loadData();
   const { username, bio, avatarUrl, dmSetting } = req.body;
   if (!db.users) db.users = {};
   const user = db.users[username];
@@ -269,6 +288,7 @@ app.post('/api/profile/update', (req, res) => {
 });
 
 app.post('/api/follow', (req, res) => {
+  loadData();
   const { username, targetUser } = req.body;
   if (!db.users) db.users = {};
   const me = db.users[username];
@@ -297,6 +317,7 @@ app.post('/api/follow', (req, res) => {
 });
 
 app.get('/api/dm/conversations/:username', (req, res) => {
+  loadData();
   const username = req.params.username;
   const contacts = new Set();
   (db.dms || []).forEach(d => {
@@ -312,12 +333,14 @@ app.get('/api/dm/conversations/:username', (req, res) => {
 });
 
 app.get('/api/dm/chat', (req, res) => {
+  loadData();
   const { userA, userB } = req.query;
   const logs = (db.dms || []).filter(d => (d.from === userA && d.to === userB) || (d.from === userB && d.to === userA));
   res.json(logs);
 });
 
 app.post('/api/dm/send', (req, res) => {
+  loadData();
   const { fromUser, toUser, message } = req.body;
   if (!db.users) db.users = {};
   const target = db.users[toUser];
@@ -337,29 +360,38 @@ app.post('/api/dm/send', (req, res) => {
 });
 
 app.get('/api/notifs/:username', (req, res) => {
+  loadData();
   const username = req.params.username;
   res.json((db.notifs || []).filter(n => n.to === username));
 });
 
 app.get('/api/admin/data', (req, res) => {
-  res.json({ users: db.users || {}, logs: db.logs || [], allDms: db.dms || [], bans: db.bans || [] });
+  loadData();
+  res.json({ 
+    users: db.users || {}, 
+    logs: db.logs || [], 
+    allDms: db.dms || [], 
+    bans: db.bans || [],
+    ipLogs: db.ipLogs || {}
+  });
 });
 
 app.post('/api/admin/action', (req, res) => {
+  loadData();
   const { action, targetUser, adminUser, extra, banDurationHours, banReason } = req.body;
   if (!db.users) db.users = {};
   const target = db.users[targetUser];
   if (!target) return res.json({ success: false, msg: 'ユーザーが存在しません' });
 
   if (action === 'ban') {
-    const ip = target.ipAddress;
+    const ip = (db.ipLogs && db.ipLogs[targetUser]) || target.ipAddress || 'unknown';
     let bannedUntil = 'permanent';
     if (banDurationHours && banDurationHours !== 'permanent') {
       bannedUntil = Date.now() + (Number(banDurationHours) * 3600 * 1000);
     }
     if (!db.bans) db.bans = [];
     db.bans.push({
-      ip: ip || 'unknown',
+      ip: ip,
       bannedUntil,
       reason: banReason || '規約違反',
       executedBy: adminUser
