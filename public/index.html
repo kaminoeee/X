@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>X Ultra</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { background-color: #000; color: #fff; font-family: sans-serif; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+  </style>
+</head>
+<body class="min-h-screen flex justify-center">
+
+  <!-- 認証画面 -->
+  <div id="auth-container" class="w-full max-w-md p-8 flex flex-col justify-center items-center min-h-screen">
+    <div class="text-4xl font-black mb-8 text-blue-500"><i class="fa-solid fa-x"></i> Ultra</div>
+    <div id="auth-msg" class="text-red-500 mb-4 text-sm"></div>
+    <div class="w-full space-y-4">
+      <input type="text" id="auth-user" placeholder="ユーザーID" class="w-full p-3 bg-black border border-gray-800 rounded-xl focus:outline-none focus:border-blue-500">
+      <input type="password" id="auth-pass" placeholder="パスワード" class="w-full p-3 bg-black border border-gray-800 rounded-xl focus:outline-none focus:border-blue-500">
+      <div id="admin-key-wrap" class="hidden">
+        <input type="password" id="auth-adminkey" placeholder="管理者シークレットキー（任意）" class="w-full p-3 bg-black border border-gray-800 rounded-xl focus:outline-none focus:border-blue-500 text-sm">
+      </div>
+      <button onclick="handleLogin()" class="w-full py-3 bg-white text-black font-bold rounded-xl hover:bg-gray-200 transition">ログイン</button>
+      <button onclick="handleRegister()" class="w-full py-3 bg-transparent border border-gray-700 text-white font-bold rounded-xl hover:bg-gray-900 transition">新規登録</button>
+      <button onclick="toggleAdminKeyInput()" class="text-xs text-blue-400 hover:underline text-center w-full block">管理者キー入力欄の切り替え</button>
+    </div>
+  </div>
+
+  <!-- メインアプリ画面 -->
+  <div id="app-container" class="hidden w-full max-w-7xl flex min-h-screen">
+    <!-- サイドバー -->
+    <div class="w-20 xl:w-64 border-r border-gray-800 flex flex-col justify-between p-4 sticky top-0 h-screen">
+      <div class="space-y-4">
+        <div class="text-2xl font-black px-3 text-blue-500 mb-6"><i class="fa-solid fa-x"></i> <span class="hidden xl:inline">Ultra</span></div>
+        <button onclick="switchTab('home')" class="w-full flex items-center gap-4 p-3 rounded-full hover:bg-gray-900 text-xl font-bold"><i class="fa-solid fa-house w-6"></i><span class="hidden xl:inline">ホーム</span></button>
+        <button onclick="switchTab('notifications')" class="w-full flex items-center gap-4 p-3 rounded-full hover:bg-gray-900 text-xl"><i class="fa-solid fa-bell w-6"></i><span class="hidden xl:inline">通知</span></button>
+        <button onclick="switchTab('dm')" class="w-full flex items-center gap-4 p-3 rounded-full hover:bg-gray-900 text-xl"><i class="fa-solid fa-envelope w-6"></i><span class="hidden xl:inline">メッセージ</span></button>
+        <button onclick="openProfile(currentUser)" class="w-full flex items-center gap-4 p-3 rounded-full hover:bg-gray-900 text-xl"><i class="fa-solid fa-user w-6"></i><span class="hidden xl:inline">プロフィール</span></button>
+        <button id="admin-nav-btn" onclick="switchTab('admin')" class="hidden w-full flex items-center gap-4 p-3 rounded-full hover:bg-gray-900 text-xl text-yellow-500"><i class="fa-solid fa-shield-halved w-6"></i><span class="hidden xl:inline">管理パネル</span></button>
+      </div>
+      <div>
+        <div class="flex items-center justify-between p-2 rounded-full hover:bg-gray-900 cursor-pointer">
+          <div class="flex items-center gap-3 overflow-hidden">
+            <div id="my-avatar-display" class="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center font-bold overflow-hidden text-sm">U</div>
+            <div class="hidden xl:block truncate">
+              <div id="my-username-display" class="font-bold text-sm truncate"></div>
+              <div class="text-xs text-gray-500">オンライン</div>
+            </div>
+          </div>
+          <button onclick="logout()" class="text-gray-500 hover:text-red-500 p-2"><i class="fa-solid fa-right-from-bracket"></i></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- センターフィード -->
+    <div class="flex-1 border-r border-gray-800 max-w-2xl min-h-screen">
+      <!-- ホームタブ -->
+      <div id="tab-home" class="tab-content">
+        <div class="flex border-b border-gray-800 font-bold text-center">
+          <div onclick="switchFeed('forYou')" id="feed-btn-forYou" class="flex-1 py-4 hover:bg-gray-900 cursor-pointer border-b-4 border-blue-500">おすすめ</div>
+          <div onclick="switchFeed('follow')" id="feed-btn-follow" class="flex-1 py-4 hover:bg-gray-900 cursor-pointer text-gray-500">フォロー中</div>
+        </div>
+        <!-- 投稿ボックス -->
+        <div class="p-4 border-b border-gray-800 flex gap-4">
+          <div id="post-avatar" class="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center font-bold flex-shrink-0 overflow-hidden text-sm">U</div>
+          <div class="flex-1">
+            <textarea id="tweet-input" placeholder="いまどうしてる？" class="w-full bg-transparent resize-none focus:outline-none min-h-[80px] text-lg"></textarea>
+            <input type="text" id="tweet-media" placeholder="画像URL（任意）" class="w-full bg-black border border-gray-800 p-2 rounded-lg text-sm mb-3">
+            <div class="flex justify-between items-center pt-2 border-t border-gray-800">
+              <div class="flex gap-4 text-blue-500">
+                <i class="fa-regular fa-image cursor-pointer"></i>
+                <i class="fa-solid fa-list cursor-pointer"></i>
+              </div>
+              <button id="tweet-submit-btn" onclick="postTweet()" class="bg-blue-500 text-white font-bold px-5 py-2 rounded-full hover:bg-blue-600 transition">ポストする</button>
+            </div>
+          </div>
+        </div>
+        <div id="tweets-container"></div>
+      </div>
+
+      <!-- 通知タブ -->
+      <div id="tab-notifications" class="tab-content hidden">
+        <div class="p-4 font-bold text-xl border-b border-gray-800">通知</div>
+        <div id="notifs-container"></div>
+      </div>
+
+      <!-- DMタブ -->
+      <div id="tab-dm" class="tab-content hidden flex h-screen">
+        <div class="w-1/3 border-r border-gray-800 overflow-y-auto">
+          <div class="p-4 font-bold text-xl border-b border-gray-800">メッセージ</div>
+          <div id="dm-conversations"></div>
+        </div>
+        <div class="w-2/3 flex flex-col justify-between">
+          <div id="dm-chat-header" class="p-4 border-b border-gray-800 font-bold">宛先を選択してください</div>
+          <div id="dm-messages" class="flex-1 p-4 overflow-y-auto space-y-3"></div>
+          <div class="p-4 border-t border-gray-800 flex gap-2">
+            <input type="text" id="dm-input" placeholder="新しいメッセージを送る..." class="flex-1 bg-black border border-gray-800 p-3 rounded-xl focus:outline-none">
+            <button onclick="sendDm()" class="bg-blue-500 text-white px-5 rounded-xl font-bold">送信</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- プロフィールタブ -->
+      <div id="tab-profile" class="tab-content hidden">
+        <div id="profile-header" class="p-4 border-b border-gray-800 flex items-center gap-4">
+          <button onclick="switchTab('home')" class="text-xl"><i class="fa-solid fa-arrow-left"></i></button>
+          <div>
+            <div id="profile-title-name" class="font-bold text-xl"></div>
+            <div class="text-xs text-gray-500">プロファイル</div>
+          </div>
+        </div>
+        <div class="p-6 border-b border-gray-800">
+          <div class="flex justify-between items-start mb-4">
+            <div id="profile-avatar" class="w-20 h-20 bg-gray-700 rounded-full flex items-center justify-center text-2xl font-bold overflow-hidden"></div>
+            <div id="profile-action-btn"></div>
+          </div>
+          <div id="profile-username" class="text-xl font-bold"></div>
+          <div id="profile-bio" class="mt-3 text-gray-300"></div>
+          <div class="flex gap-4 mt-4 text-sm text-gray-500">
+            <div><span id="profile-following" class="text-white font-bold">0</span> フォロー中</div>
+            <div><span id="profile-followers" class="text-white font-bold">0</span> フォロワー</div>
+          </div>
+        </div>
+        <div id="profile-tweets"></div>
+      </div>
+
+      <!-- 管理パネルタブ -->
+      <div id="tab-admin" class="tab-content hidden p-6 space-y-6 overflow-y-auto h-screen">
+        <div class="text-2xl font-bold text-yellow-500"><i class="fa-solid fa-shield-halved"></i> 管理パネル</div>
+        <div class="bg-gray-900 p-4 rounded-xl">
+          <div class="font-bold mb-3 text-lg">接続ログ・IPアドレス一覧（オフライン含む）</div>
+          <div id="admin-ip-logs" class="space-y-2 text-sm"></div>
+        </div>
+        <div class="bg-gray-900 p-4 rounded-xl">
+          <div class="font-bold mb-3 text-lg">ユーザー管理</div>
+          <div id="admin-users-list" class="space-y-3"></div>
+        </div>
+        <div class="bg-gray-900 p-4 rounded-xl">
+          <div class="font-bold mb-3 text-lg">システムアクションログ</div>
+          <div id="admin-logs-list" class="space-y-2 text-sm text-gray-300 max-h-60 overflow-y-auto"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右サイドバー（オンラインユーザー一覧） -->
+    <div class="hidden lg:block w-80 p-4 space-y-6 sticky top-0 h-screen overflow-y-auto">
+      <div class="bg-gray-900 p-4 rounded-2xl">
+        <div class="font-bold text-lg mb-4 flex items-center gap-2"><i class="fa-solid fa-users text-green-500"></i> オンラインユーザー</div>
+        <div id="online-users-list" class="space-y-3"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentUser = localStorage.getItem('x_user') || '';
+    let currentTab = 'home';
+    let currentFeedType = 'forYou';
+    let currentProfileUser = '';
+    let currentDmTarget = '';
+    let autoRefreshTimer = null;
+
+    if (currentUser) {
+      document.getElementById('auth-container').classList.add('hidden');
+      document.getElementById('app-container').classList.remove('hidden');
+      initApp();
+    }
+
+    function toggleAdminKeyInput() {
+      const wrap = document.getElementById('admin-key-wrap');
+      wrap.classList.toggle('hidden');
+    }
+
+    async function handleLogin() {
+      const user = document.getElementById('auth-user').value.trim();
+      const pass = document.getElementById('auth-pass').value;
+      if (!user || !pass) return showError('ユーザーIDとパスワードを入力してください');
+
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user, password: pass })
+      });
+      const data = await res.json();
+      if (data.success) {
+        localStorage.setItem('x_user', user);
+        currentUser = user;
+        location.reload();
+      } else {
+        showError(data.msg);
+      }
+    }
+
+    async function handleRegister() {
+      const user = document.getElementById('auth-user').value.trim();
+      const pass = document.getElementById('auth-pass').value;
+      const adminKey = document.getElementById('auth-adminkey').value;
+      if (!user || !pass) return showError('ユーザーIDとパスワードを入力してください');
+
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: user, password: pass, adminPassword: adminKey })
+      });
+      const data = await res.json();
+      if (data.success) {
+        localStorage.setItem('x_user', user);
+        currentUser = user;
+        location.reload();
+      } else {
+        showError(data.msg);
+      }
+    }
+
+    function showError(msg) {
+      document.getElementById('auth-msg').innerText = msg;
+    }
+
+    function logout() {
+      localStorage.removeItem('x_user');
+      location.reload();
+    }
+
+    function initApp() {
+      document.getElementById('my-username-display').innerText = '@' + currentUser;
+      document.getElementById('my-avatar-display').innerText = currentUser.charAt(0).toUpperCase();
+      document.getElementById('post-avatar').innerText = currentUser.charAt(0).toUpperCase();
+
+      checkAdminStatus();
+      loadDataForCurrentTab();
+
+      // 定期ハートビート（オンライン維持）
+      setInterval(() => {
+        fetch('/api/heartbeat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: currentUser })
+        }).catch(() => {});
+      }, 15000);
+
+      // 自動更新ループ（タイムライン、オンライン、DMなど）
+      autoRefreshTimer = setInterval(() => {
+        pollData();
+      }, 5000);
+    }
+
+    function pollData() {
+      loadOnlineUsers();
+      if (currentTab === 'home') loadTweets(true);
+      if (currentTab === 'notifications') loadNotifications();
+      if (currentTab === 'dm') {
+        loadDmConversations();
+        if (currentDmTarget) loadDmChat(currentDmTarget, true);
+      }
+      if (currentTab === 'admin') loadAdminData();
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById('tab-' + tab).classList.remove('hidden');
+      loadDataForCurrentTab();
+    }
+
+    function loadDataForCurrentTab() {
+      loadOnlineUsers();
+      if (currentTab === 'home') loadTweets();
+      if (currentTab === 'notifications') loadNotifications();
+      if (currentTab === 'dm') loadDmConversations();
+      if (currentTab === 'admin') loadAdminData();
+    }
+
+    async function checkAdminStatus() {
+      const res = await fetch('/api/admin/data');
+      const data = await res.json();
+      if (data.users && data.users[currentUser] && data.users[currentUser].isAdmin) {
+        document.getElementById('admin-nav-btn').classList.remove('hidden');
+      }
+    }
+
+    async function loadOnlineUsers() {
+      const res = await fetch('/api/online-users');
+      const data = await res.json();
+      const list = document.getElementById('online-users-list');
+      list.innerHTML = data.users.map(u => `
+        <div onclick="openProfile('${u.username}')" class="flex items-center justify-between cursor-pointer hover:bg-gray-800 p-2 rounded-xl">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center font-bold text-xs">${u.username.charAt(0).toUpperCase()}</div>
+            <div>
+              <div class="font-bold text-sm">@${u.username} ${u.isAdmin ? '<i class="fa-solid fa-check-circle text-blue-500"></i>' : ''}</div>
+            </div>
+          </div>
+          <span class="w-2.5 h-2.5 bg-green-500 rounded-full"></span>
+        </div>
+      `).join('');
+    }
+
+    function switchFeed(type) {
+      currentFeedType = type;
+      if (type === 'forYou') {
+        document.getElementById('feed-btn-forYou').className = 'flex-1 py-4 hover:bg-gray-900 cursor-pointer border-b-4 border-blue-500';
+        document.getElementById('feed-btn-follow').className = 'flex-1 py-4 hover:bg-gray-900 cursor-pointer text-gray-500';
+      } else {
+        document.getElementById('feed-btn-follow').className = 'flex-1 py-4 hover:bg-gray-900 cursor-pointer border-b-4 border-blue-500';
+        document.getElementById('feed-btn-forYou').className = 'flex-1 py-4 hover:bg-gray-900 cursor-pointer text-gray-500';
+      }
+      loadTweets();
+    }
+
+    async function loadTweets(isBackground = false) {
+      const res = await fetch(`/api/tweets?searchType=${currentFeedType}&currentMe=${currentUser}`);
+      const json = await res.json();
+      const container = document.getElementById('tweets-container');
+      
+      container.innerHTML = json.data.map(t => `
+        <div class="border-b border-gray-800 p-4 hover:bg-gray-900/40 transition">
+          <div class="flex gap-3">
+            <div onclick="openProfile('${t.user}')" class="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center font-bold cursor-pointer text-sm flex-shrink-0">${t.user.charAt(0).toUpperCase()}</div>
+            <div class="flex-1">
+              <div class="flex justify-between items-center">
+                <div onclick="openProfile('${t.user}')" class="cursor-pointer font-bold hover:underline">@${t.user} <span class="text-gray-500 text-xs font-normal">${t.timestamp}</span></div>
+                ${(t.user === currentUser) ? `<button onclick="deleteTweet('${t.id}')" class="text-gray-500 hover:text-red-500"><i class="fa-solid fa-trash"></i></button>` : ''}
+              </div>
+              <div class="mt-2 text-base whitespace-pre-wrap">${t.content}</div>
+              ${t.mediaUrl ? `<img src="${t.mediaUrl}" class="mt-3 rounded-2xl max-h-80 w-full object-cover">` : ''}
+              <div class="flex gap-8 mt-4 text-gray-500 text-sm">
+                <button onclick="likeTweet('${t.id}')" class="hover:text-pink-500 flex items-center gap-1"><i class="fa-solid fa-heart ${t.likes && t.likes.includes(currentUser) ? 'text-pink-500' : ''}"></i> ${t.likes ? t.likes.length : 0}</button>
+                <button onclick="openProfile('${t.user}')" class="hover:text-blue-500"><i class="fa-regular fa-comment"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function postTweet() {
+      const textContent = document.getElementById('tweet-input').value.trim();
+      const mediaUrl = document.getElementById('tweet-media').value.trim();
+      if (!textContent && !mediaUrl) return;
+
+      const submitBtn = document.getElementById('tweet-submit-btn');
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'サーバーに接続中...';
+
+      try {
+        const res = await fetch('/api/tweets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: currentUser, textContent, mediaUrl })
+        });
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById('tweet-input').value = '';
+          document.getElementById('tweet-media').value = '';
+          loadTweets();
+        }
+      } catch (e) {
+        alert('投稿に失敗しました');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'ポストする';
+      }
+    }
+
+    async function likeTweet(tweetId) {
+      await fetch('/api/tweets/like', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tweetId, username: currentUser })
+      });
+      loadTweets(true);
+    }
+
+    async function deleteTweet(tweetId) {
+      if (!confirm('本当に削除しますか？')) return;
+      await fetch(`/api/tweets/${tweetId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: currentUser })
+      });
+      loadTweets();
+    }
+
+    async function openProfile(username) {
+      if (!username || username === 'undefined') return;
+      currentProfileUser = username;
+      switchTab('profile');
+
+      const res = await fetch(`/api/profile/${username}?viewer=${currentUser}`);
+      const data = await res.json();
+
+      document.getElementById('profile-title-name').innerText = '@' + username;
+      document.getElementById('profile-username').innerText = '@' + username;
+      document.getElementById('profile-avatar').innerText = username.charAt(0).toUpperCase();
+      document.getElementById('profile-bio').innerText = data.bio || '';
+      document.getElementById('profile-following').innerText = data.followingCount || 0;
+      document.getElementById('profile-followers').innerText = data.followerCount || 0;
+
+      const actionBtn = document.getElementById('profile-action-btn');
+      if (username === currentUser) {
+        actionBtn.innerHTML = `<button onclick="alert('プロフィール編集機能は現在準備中です')" class="px-4 py-2 border border-gray-700 rounded-full font-bold text-sm">プロフィールを編集</button>`;
+      } else {
+        const followText = data.isFollowing ? 'フォロー解除' : 'フォロー';
+        const followClass = data.isFollowing ? 'bg-transparent border border-gray-700 text-white' : 'bg-white text-black';
+        actionBtn.innerHTML = `
+          <div class="flex gap-2">
+            <button onclick="startDmFromProfile('${username}')" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-full font-bold text-sm"><i class="fa-solid fa-envelope"></i> DM</button>
+            <button onclick="toggleFollow('${username}')" class="px-4 py-2 ${followClass} rounded-full font-bold text-sm">${followText}</button>
+          </div>
+        `;
+      }
+
+      loadProfileTweets(username);
+    }
+
+    async function loadProfileTweets(username) {
+      const res = await fetch(`/api/tweets?searchType=profile&searchQuery=${username}`);
+      const json = await res.json();
+      document.getElementById('profile-tweets').innerHTML = json.data.map(t => `
+        <div class="border-b border-gray-800 p-4">
+          <div class="font-bold">@${t.user} <span class="text-gray-500 text-xs">${t.timestamp}</span></div>
+          <div class="mt-2">${t.content}</div>
+        </div>
+      `).join('');
+    }
+
+    async function toggleFollow(targetUser) {
+      await fetch('/api/follow', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: currentUser, targetUser })
+      });
+      openProfile(targetUser);
+    }
+
+    function startDmFromProfile(username) {
+      switchTab('dm');
+      selectDmUser(username);
+    }
+
+    async function loadNotifications() {
+      const res = await fetch(`/api/notifs/${currentUser}`);
+      const list = await res.json();
+      document.getElementById('notifs-container').innerHTML = list.reverse().map(n => `
+        <div class="p-4 border-b border-gray-800 flex items-center gap-3">
+          <i class="fa-solid fa-bell text-blue-500"></i>
+          <div><div>${n.content}</div><div class="text-xs text-gray-500">${n.timestamp}</div></div>
+        </div>
+      `).join('');
+    }
+
+    async function loadDmConversations() {
+      const res = await fetch(`/api/dm/conversations/${currentUser}`);
+      const list = await res.json();
+      const container = document.getElementById('dm-conversations');
+      container.innerHTML = list.map(c => `
+        <div onclick="selectDmUser('${c.username}')" class="p-4 border-b border-gray-800 hover:bg-gray-900 cursor-pointer flex items-center gap-3 ${currentDmTarget === c.username ? 'bg-gray-900' : ''}">
+          <div class="w-10 h-10 bg-gray-700 rounded-full flex items-center justify-center font-bold text-sm">${c.username.charAt(0).toUpperCase()}</div>
+          <div>
+            <div class="font-bold">@${c.username}</div>
+            <div class="text-xs text-green-500">${c.isOnline ? 'オンライン' : 'オフライン'}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function selectDmUser(username) {
+      currentDmTarget = username;
+      document.getElementById('dm-chat-header').innerHTML = `<div>@${username} とのメッセージ</div>`;
+      loadDmChat(username);
+      loadDmConversations();
+    }
+
+    async function loadDmChat(username, isBackground = false) {
+      if (!username) return;
+      const res = await fetch(`/api/dm/chat?userA=${currentUser}&userB=${username}`);
+      const logs = await res.json();
+      document.getElementById('dm-messages').innerHTML = logs.map(l => `
+        <div class="flex flex-col ${l.from === currentUser ? 'items-end' : 'items-start'}">
+          <div class="max-w-xs p-3 rounded-2xl ${l.from === currentUser ? 'bg-blue-600 text-white' : 'bg-gray-800 text-white'}">
+            ${l.message}
+          </div>
+          <span class="text-[10px] text-gray-500 mt-1">${l.timestamp}</span>
+        </div>
+      `).join('');
+    }
+
+    async function sendDm() {
+      const input = document.getElementById('dm-input');
+      const message = input.value.trim();
+      if (!message || !currentDmTarget) return;
+
+      const res = await fetch('/api/dm/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fromUser: currentUser, toUser: currentDmTarget, message })
+      });
+      const data = await res.json();
+      if (data.success) {
+        input.value = '';
+        loadDmChat(currentDmTarget);
+      } else {
+        alert(data.msg);
+      }
+    }
+
+    async function loadAdminData() {
+      const res = await fetch('/api/admin/data');
+      const data = await res.json();
+
+      // IP・接続ログ一覧（オフライン含む全ユーザー）
+      const ipContainer = document.getElementById('admin-ip-logs');
+      const ipLogs = data.ipLogs || {};
+      ipContainer.innerHTML = Object.keys(data.users).map(u => {
+        const uObj = data.users[u];
+        const ip = ipLogs[u] || uObj.ipAddress || '不明';
+        const status = uObj.isOnline ? '<span class="text-green-500 font-bold">オンライン</span>' : '<span class="text-gray-500">オフライン</span>';
+        return `<div class="flex justify-between items-center bg-black p-3 rounded-xl border border-gray-800">
+          <div><b>@${u}</b> (IP: ${ip})</div>
+          <div>${status}</div>
+        </div>`;
+      }).join('');
+
+      // ユーザー管理
+      const usersContainer = document.getElementById('admin-users-list');
+      usersContainer.innerHTML = Object.keys(data.users).map(u => {
+        const uObj = data.users[u];
+        return `<div class="flex justify-between items-center bg-black p-3 rounded-xl border border-gray-800">
+          <div><b>@${u}</b> ${uObj.isAdmin ? '(管理者)' : ''}</div>
+          <div class="flex gap-2">
+            <button onclick="adminAction('${u}', 'ban')" class="px-3 py-1 bg-red-600 text-white rounded text-xs font-bold">BAN</button>
+          </div>
+        </div>`;
+      }).join('');
+
+      // システムログ
+      const logsContainer = document.getElementById('admin-logs-list');
+      logsContainer.innerHTML = (data.logs || []).reverse().map(l => `
+        <div>[${l.timestamp}] <b>@${l.user}</b> - ${l.action} (${l.details || ''})</div>
+      `).join('');
+    }
+
+    async function adminAction(targetUser, action) {
+      if (!confirm(`@${targetUser} に対して ${action} を実行しますか？`)) return;
+      await fetch('/api/admin/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, targetUser, adminUser: currentUser })
+      });
+      loadAdminData();
+    }
+  </script>
+</body>
+</html>
