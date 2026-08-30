@@ -2,7 +2,7 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8">
-    <title>X Ultra - Live & Admin Censorship</title>
+    <title>X Ultra - Stable Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       .theme-dark { background-color: #0b0f19; color: #f3f4f6; }
@@ -20,11 +20,10 @@
   </head>
   <body class="theme-dark font-sans antialiased min-h-screen">
 
-    <!-- BAN執行時の強制表示画面 -->
     <div id="banScreen" class="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center p-6 text-center hidden">
       <div class="bg-red-950/40 border border-red-600 p-8 rounded-2xl max-w-lg w-full space-y-4">
         <h1 class="text-3xl font-black text-red-500">アクセスが制限されています</h1>
-        <p class="text-lg font-bold text-white">あなたはサービスからBANされました。</p>
+        <p class="text-lg font-bold text-white">あなたはBANされました。</p>
         <div class="text-left bg-black/40 p-4 rounded-xl space-y-2 text-sm border border-red-900/50">
           <p><strong class="text-gray-400">執行者：</strong> <span id="banExecUser" class="text-red-400 font-bold"></span></p>
           <p><strong class="text-gray-400">理由：</strong> <span id="banReasonText" class="text-white"></span></p>
@@ -33,10 +32,9 @@
       </div>
     </div>
 
-    <!-- 認証ウォール（左下に完全に隠された管理者ボタン付き） -->
     <div id="authWall" class="fixed inset-0 bg-[#0b0f19] flex flex-col items-center justify-center z-50 p-4 relative">
       <div class="mb-6 text-4xl font-extrabold tracking-widest text-white">
-        <span class="text-blue-500">X</span> <span class="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400">Live Edition</span>
+        <span class="text-blue-500">X</span> <span class="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400">Ultra</span>
       </div>
       <div class="bg-card p-8 rounded-2xl w-full max-w-md border border-main shadow-2xl relative">
         <h2 id="authTitle" class="text-xl font-bold mb-2 text-center">Xにログイン</h2>
@@ -44,7 +42,6 @@
           <input type="text" id="authUser" class="w-full input-box border rounded-lg p-3 text-sm focus:outline-none" placeholder="ユーザーID">
           <input type="password" id="authPass" class="w-full input-box border rounded-lg p-3 text-sm focus:outline-none" placeholder="パスワード">
           
-          <!-- 完全に隠された管理者キー入力欄 -->
           <div id="adminKeyWrapper" class="hidden">
             <input type="password" id="authAdminKey" class="w-full input-box border rounded-lg p-3 text-sm focus:outline-none border-red-500/50" placeholder="管理者シークレットキー">
           </div>
@@ -54,13 +51,11 @@
         </div>
       </div>
 
-      <!-- 左下の極小シークレットトリガー -->
-      <button onclick="revealAdminKeyInput()" class="absolute bottom-2 left-2 text-gray-900 hover:text-gray-600 text-[10px] p-2 select-none" title="Admin Trigger">
+      <button onclick="revealAdminKeyInput()" class="absolute bottom-2 left-2 text-gray-900 hover:text-gray-600 text-[10px] p-2 select-none" title="Admin">
         ▪️
       </button>
     </div>
 
-    <!-- オンラインユーザー一覧モーダル -->
     <div id="onlineModal" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center hidden">
       <div class="bg-card border border-main rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-2xl">
         <div class="flex justify-between items-center border-b border-main pb-3">
@@ -94,7 +89,6 @@
         <header class="sticky top-0 bg-inherit backdrop-blur border-b border-main z-10 px-6 py-4 flex justify-between items-center">
           <div class="flex items-center gap-4">
             <h2 id="pageTitle" class="text-xl font-bold">ホーム</h2>
-            <!-- 右上のオンライン数カウンター -->
             <button onclick="toggleOnlineModal(true)" class="bg-card hover:bg-card/80 border border-main px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition">
               <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
               <span id="headerOnlineCount">オンライン: 0人</span>
@@ -154,9 +148,6 @@
 
         <div id="timelineSection">
           <div id="timeline" class="divide-y divide-main"></div>
-          <div class="p-6 text-center">
-            <button onclick="loadMoreTweets()" id="loadMoreBtn" class="bg-card hover:bg-card/80 text-xs border border-main px-6 py-2.5 rounded-full font-bold hidden">さらに読み込む</button>
-          </div>
         </div>
       </main>
     </div>
@@ -168,13 +159,11 @@
       let activeDMTarget = "";
       let currentSearchType = "all";
       let currentSearchQuery = "";
-      let timelineOffset = 0;
       let activeReplyToId = null;
       let activeRepostOfId = null;
       let uploadedMediaUrl = "";
       let liveInterval = null;
 
-      // BAN判定チェッカー
       function checkBanStatus(resJson) {
         if (resJson && resJson.banned) {
           document.getElementById('banScreen').classList.remove('hidden');
@@ -208,11 +197,18 @@
 
       function toggleAuthMode() {
         const title = document.getElementById('authTitle');
+        const authBtn = document.getElementById('authBtn');
+        const toggleBtn = document.getElementById('toggleModeBtn');
         const keyWrap = document.getElementById('adminKeyWrapper');
+
         if(title.innerText.includes('ログイン')) {
           title.innerText = 'アカウント作成';
+          authBtn.innerText = 'アカウントを作成する';
+          toggleBtn.innerText = 'すでにアカウントをお持ちですか？ ログイン';
         } else {
           title.innerText = 'Xにログイン';
+          authBtn.innerText = 'ログイン';
+          toggleBtn.innerText = '新規アカウントを作成する';
           keyWrap.classList.add('hidden');
         }
       }
@@ -263,13 +259,13 @@
         liveInterval = setInterval(() => {
           refreshOnlineStats();
           if (currentSearchType === 'all' && !document.getElementById('timelineSection').classList.contains('hidden')) {
-            loadTimeline(false, true);
+            loadTimeline();
           }
           if (!document.getElementById('dmSection').classList.contains('hidden')) {
             loadDMConversations();
             if (activeDMTarget) loadDMLogs(true);
           }
-        }, 4000);
+        }, 5000);
       }
 
       function loadUserAvatarDisplay(username, containerId, textId) {
@@ -343,7 +339,7 @@
           document.getElementById('tabBar').classList.remove('hidden');
           document.getElementById('tweetFormArea').classList.remove('hidden');
           document.getElementById('timelineSection').classList.remove('hidden');
-          loadTimeline(false);
+          loadTimeline();
         } else if (target === 'dm') {
           document.getElementById('pageTitle').innerText = "ダイレクトメッセージ";
           document.getElementById('dmSection').classList.remove('hidden');
@@ -369,10 +365,10 @@
         currentSearchType = type;
         document.getElementById('tabAll').className = type === 'all' ? 'flex-1 py-3 tab-active' : 'flex-1 py-3 text-gray-500';
         document.getElementById('tabFollow').className = type === 'follow' ? 'flex-1 py-3 tab-active' : 'flex-1 py-3 text-gray-500';
-        loadTimeline(false);
+        loadTimeline();
       }
 
-      function loadTimeline(appendMode = false) {
+      function loadTimeline() {
         fetch(`/api/tweets?searchType=${currentSearchType}&searchQuery=${currentSearchQuery}&currentMe=${currentMe}`)
           .then(res => res.json())
           .then(response => {
@@ -384,7 +380,7 @@
       function renderTweetsList(tweets) {
         const container = document.getElementById('timeline');
         container.innerHTML = '';
-        if(tweets.length === 0) {
+        if(!tweets || tweets.length === 0) {
           container.innerHTML = '<p class="p-6 text-center text-xs text-gray-500">投稿がありません</p>';
           return;
         }
@@ -411,7 +407,7 @@
             : t.user[0].toUpperCase();
 
           container.insertAdjacentHTML('beforeend', `
-            <div class="p-6 hover:bg-card/20 transition flex gap-4">
+            <div class="p-6 hover:bg-card/20 transition flex gap-4 border-b border-main">
               <div class="w-12 h-12 rounded-full bg-slate-600 flex items-center justify-center font-bold text-white flex-shrink-0 cursor-pointer overflow-hidden" onclick="viewProfile('${t.user}')">${avatarHtml}</div>
               <div class="flex-1">
                 <div class="flex items-center justify-between text-sm">
@@ -422,7 +418,7 @@
                   ${canDelete ? `<button onclick="deleteTweet('${t.id}')" class="text-xs text-red-400 hover:underline">削除</button>` : ''}
                 </div>
                 ${t.replyToUser ? `<p class="text-xs text-blue-400 mt-1">@${t.replyToUser} への返信</p>` : ''}
-                <p class="mt-2 text-sm whitespace-pre-wrap">${formatContent(t.content)}</p>
+                <p class="mt-2 text-sm whitespace-pre-wrap">${t.content}</p>
                 ${t.mediaUrl ? `<div class="mt-3"><img src="${t.mediaUrl}" class="max-h-60 rounded-xl border border-main"></div>` : ''}
                 ${repostHtml}
                 <div class="flex gap-6 mt-3 text-xs text-gray-500">
@@ -434,10 +430,6 @@
             </div>
           `);
         });
-      }
-
-      function formatContent(text) {
-        return text.replace(/(#\S+)/g, '<span class="text-blue-400 font-bold">$&</span>');
       }
 
       function handleFileSelect(event) {
@@ -487,7 +479,7 @@
           uploadedMediaUrl = "";
           document.getElementById('localFileInput').value = "";
           clearFormContext();
-          loadTimeline(false);
+          loadTimeline();
         });
       }
 
@@ -510,7 +502,7 @@
           body: JSON.stringify({ username: currentMe })
         }).then(res => res.json()).then(res => {
           if (checkBanStatus(res)) return;
-          loadTimeline(false);
+          loadTimeline();
         });
       }
 
@@ -553,7 +545,7 @@
             `;
             currentSearchType = 'profile';
             currentSearchQuery = username;
-            loadTimeline(false);
+            loadTimeline();
           });
       }
 
@@ -662,7 +654,7 @@
                   <textarea id="setBio" class="w-full input-box border rounded-lg p-3 text-sm mt-1 h-24">${prof.bio || ''}</textarea>
                 </div>
                 <div>
-                  <label class="text-xs text-gray-400">アイコン画像URL (変更がすぐに反映されます)</label>
+                  <label class="text-xs text-gray-400">アイコン画像URL</label>
                   <input type="text" id="setAvatar" class="w-full input-box border rounded-lg p-3 text-sm mt-1" value="${prof.avatarUrl || ''}">
                 </div>
                 <div>
@@ -698,9 +690,8 @@
           .then(res => res.json())
           .then(data => {
             const sec = document.getElementById('adminSection');
-            
             let userRows = "";
-            Object.keys(data.users).forEach(u => {
+            Object.keys(data.users || {}).forEach(u => {
               const uData = data.users[u];
               const dotClass = uData.isOnline ? 'bg-green-500' : 'bg-red-500';
               userRows += `
@@ -715,8 +706,8 @@
               `;
             });
 
-            let userOptions = Object.keys(data.users).map(u => `<option value="${u}">@${u}</option>`).join('');
-            let logHtml = data.logs.map(l => `<div class="text-xs border-b border-main py-1"><strong>[${l.timestamp}] ${l.user}</strong>: ${l.action} - ${l.details}</div>`).join('');
+            let userOptions = Object.keys(data.users || {}).map(u => `<option value="${u}">@${u}</option>`).join('');
+            let logHtml = (data.logs || []).map(l => `<div class="text-xs border-b border-main py-1"><strong>[${l.timestamp}] ${l.user}</strong>: ${l.action} - ${l.details}</div>`).join('');
 
             sec.innerHTML = `
               <div class="space-y-6">
@@ -731,7 +722,7 @@
                       <option value="168">7日間BAN</option>
                     </select>
                   </div>
-                  <input type="text" id="banReasonInput" class="w-full input-box border rounded-lg p-2 text-xs" placeholder="BAN理由（例：規約違反、荒らし行為など）">
+                  <input type="text" id="banReasonInput" class="w-full input-box border rounded-lg p-2 text-xs" placeholder="BAN理由">
                   <div class="flex gap-2">
                     <button onclick="execAdminAction('ban')" class="bg-red-600 text-white text-xs px-4 py-2 rounded-lg font-bold">IP BAN執行</button>
                     <button onclick="execAdminAction('warn')" class="bg-yellow-600 text-white text-xs px-4 py-2 rounded-lg font-bold">警告送信</button>
@@ -778,7 +769,7 @@
             document.getElementById('inspectTitle').innerText = `@${targetUser} のDM履歴`;
             box.classList.remove('hidden');
             content.innerHTML = "";
-            const targetDms = data.allDms.filter(d => d.from === targetUser || d.to === targetUser);
+            const targetDms = (data.allDms || []).filter(d => d.from === targetUser || d.to === targetUser);
             if(targetDms.length === 0) {
               content.innerHTML = '<p class="text-gray-500">DM履歴はありません</p>';
               return;
@@ -814,7 +805,7 @@
         if(!q) return;
         currentSearchType = q.startsWith('#') ? 'hashtag' : 'keyword';
         currentSearchQuery = q.startsWith('#') ? q.substring(1) : q;
-        loadTimeline(false);
+        loadTimeline();
       }
 
       function toggleThemeMode() {
