@@ -1,413 +1,389 @@
 const express = require('express');
+const fs = require('fs');
 const path = require('path');
-const { google } = require('googleapis');
-const crypto = require('crypto');
-
 const app = express();
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Vercel環境などでのクライアントIP取得用
-app.set('trust proxy', true);
+// データ保存用ファイルパス (Vercelの一時領域またはローカル)
+const DATA_FILE = path.join('/tmp', 'x_ultra_data.json');
 
-const FOLDER_ID = '1l-oyfOSxBQnyDG6cfaQie_pBjJnbvZZF';
+let db = {
+  users: {},
+  tweets: [],
+  dms: [],
+  notifs: [],
+  bans: [], // { ip, bannedUntil, reason, executedBy }
+  logs: []
+};
 
-function getDriveClient() {
-  const auth = new google.auth.GoogleAuth({
-    credentials: JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '{}'),
-    scopes: ['https://www.googleapis.com/auth/drive']
-  });
-  return google.drive({ version: 'v3', auth });
-}
-
-let dbCache = null;
-
-async function loadDB() {
-  if (dbCache) return dbCache;
+// データロード
+function loadData() {
   try {
-    const drive = getDriveClient();
-    const res = await drive.files.list({
-      q: `name = 'database.json' and '${FOLDER_ID}' in parents and trashed = false`,
-      fields: 'files(id, name)'
-    });
-    
-    if (res.data.files.length > 0) {
-      const fileId = res.data.files[0].id;
-      const file = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'json' });
-      dbCache = file.data;
-    } else {
-      dbCache = { users: {}, tweets: [], dms: [], notifs: [], adminLogs: [], recommendations: [] };
-      await saveDB();
+    if (fs.existsSync(DATA_FILE)) {
+      const data = fs.readFileSync(DATA_FILE, 'utf8');
+      db = JSON.parse(data);
     }
   } catch (e) {
-    console.error('DB Load Error:', e);
-    if (!dbCache) dbCache = { users: {}, tweets: [], dms: [], notifs: [], adminLogs: [], recommendations: [] };
+    console.error("Data load error:", e);
   }
-  return dbCache;
 }
 
-async function saveDB() {
+// データセーブ
+function saveData() {
   try {
-    const drive = getDriveClient();
-    const res = await drive.files.list({
-      q: `name = 'database.json' and '${FOLDER_ID}' in parents and trashed = false`,
-      fields: 'files(id, name)'
-    });
-    
-    const fileMetadata = { name: 'database.json', parents: [FOLDER_ID] };
-    const media = {
-      mimeType: 'application/json',
-      body: JSON.stringify(dbCache, null, 2)
-    };
-
-    if (res.data.files.length > 0) {
-      await drive.files.update({ fileId: res.data.files[0].id, requestBody: fileMetadata, media: media });
-    } else {
-      await drive.files.create({ requestBody: fileMetadata, media: media, fields: 'id' });
-    }
+    fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
   } catch (e) {
-    console.error('DB Save Error:', e);
+    console.error("Data save error:", e);
   }
 }
 
-function hashPassword(password) {
-  return crypto.createHash('sha256').update(password).digest('hex');
-}
+loadData();
 
-function addLog(db, action, details, user) {
-  if (!db.adminLogs) db.adminLogs = [];
-  db.adminLogs.unshift({
-    timestamp: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }),
-    user: user,
-    action: action,
-    details: details
+// 定期的にオンライン状態をオフラインに落とす判定 (30秒以上更新がない場合)
+setInterval(() => {
+  const now = Date.now();
+  let changed = false;
+  Object.keys(db.users).forEach(u => {
+    if (db.users[u].isOnline && (now - (db.users[u].lastSeen || 0) > 20000)) {
+      db.users[u].isOnline = false;
+      changed = true;
+    }
   });
-}
+  if (changed) saveData();
+}, 5000);
 
-// ─── API エンドポイント ───
-
-app.post('/api/register', async (req, res) => {
-  const { username, password, adminPassword } = req.body;
-  if (!username || !username.trim() || !password || !password.trim()) {
-    return res.json({ success: false, msg: "空欄があります" });
-  }
-  const db = await loadDB();
-  if (db.users[username]) return res.json({ success: false, msg: "❌ 既に存在します" });
+// BANチェックミドルウェア
+function checkBan(req, res, next) {
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
   
-  let isAdmin = false;
-  if (adminPassword && adminPassword.trim() !== "") {
-    if (adminPassword === "28758141") isAdmin = true;
-    else return res.json({ success: false, msg: "管理者キーが違います" });
+  const activeBan = db.bans.find(b => b.ip === ip);
+  if (activeBan) {
+    if (activeBan.bannedUntil === 'permanent' || activeBan.bannedUntil > now) {
+      return res.status(403).json({
+        banned: true,
+        reason: activeBan.reason,
+        executedBy: activeBan.executedBy,
+        bannedUntil: activeBan.bannedUntil === 'permanent' ? '永久' : new Date(activeBan.bannedUntil).toLocaleString()
+      });
+    } else {
+      // 期限切れBANの解除
+      db.bans = db.bans.filter(b => b.ip !== ip);
+      saveData();
+    }
   }
+  next();
+}
 
-  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || "不明";
+app.use(checkBan);
+
+// 認証・登録
+app.post('/api/register', (req, res) => {
+  const { username, password, adminPassword } = req.body;
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  if (!username || !password) return res.json({ success: false, msg: '入力値が不正です' });
+  if (db.users[username]) return res.json({ success: false, msg: '既に存在するユーザーIDです' });
+
+  let isAdmin = false;
+  let isModerator = false;
+
+  // 隠し管理者キーの一致確認 (環境変数 または 秘密のコード 'SECRET_ADMIN_999')
+  if (adminPassword) {
+    if (adminPassword === (process.env.ADMIN_SECRET_KEY || 'SECRET_ADMIN_999')) {
+      isAdmin = true;
+      isModerator = true;
+    } else {
+      return res.json({ success: false, msg: '管理者シークレットキーが違います' });
+    }
+  }
 
   db.users[username] = {
-    password: hashPassword(password),
-    bio: isAdmin ? "🚨公式管理者" : "よろしくお願いします！",
-    avatarUrl: "",
-    following: [],
-    isAdmin: isAdmin,
-    isModerator: false,
+    password,
+    isAdmin,
+    isModerator,
     isVerified: isAdmin,
-    dmSetting: "allow_all",
-    lastSeen: Date.now(),
-    ipAddress: clientIp
+    bio: 'X Ultraへようこそ！',
+    avatarUrl: '',
+    dmSetting: 'allow_all',
+    following: [],
+    followers: [],
+    ipAddress: ip,
+    isOnline: true,
+    lastSeen: Date.now()
   };
-  await saveDB();
-  res.json({ success: true, msg: "登録成功" });
+
+  db.logs.push({ timestamp: new Date().toLocaleString(), user: username, action: 'REGISTER', details: `新規登録 (IP: ${ip})` });
+  saveData();
+  res.json({ success: { msg: 'アカウント作成成功！' }, msg: 'アカウント作成成功！' });
 });
 
-app.post('/api/login', async (req, res) => {
-  const { username, password, isHashed } = req.body;
-  const db = await loadDB();
-  if (!db.users[username]) return res.json({ success: false, msg: "ログイン失敗" });
-  
-  const targetHash = isHashed ? password : hashPassword(password);
-  if (db.users[username].password === targetHash) {
-    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || "不明";
-    db.users[username].lastSeen = Date.now();
-    db.users[username].ipAddress = clientIp;
-    await saveDB();
-    return res.json({
-      success: true,
-      isAdmin: db.users[username].isAdmin || false,
-      isModerator: db.users[username].isModerator || false,
-      token: db.users[username].password
-    });
-  }
-  res.json({ success: false, msg: "ログイン失敗" });
-});
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body;
+  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
+  const user = db.users[username];
 
-app.get('/api/profile/:username', async (req, res) => {
-  const { username } = req.params;
-  const viewer = req.query.viewer;
-  const db = await loadDB();
-  if (viewer && db.users[viewer]) {
-    db.users[viewer].lastSeen = Date.now();
-    db.users[viewer].ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress || db.users[viewer].ipAddress;
-    await saveDB();
-  }
-  if (!db.users[username]) return res.json(null);
-
-  let followerCount = 0;
-  Object.keys(db.users).forEach(name => {
-    if (db.users[name].following && db.users[name].following.includes(username)) followerCount++;
-  });
-
-  res.json({
-    user: username,
-    bio: db.users[username].bio || "",
-    avatarUrl: db.users[username].avatarUrl || "",
-    followingCount: (db.users[username].following || []).length,
-    followerCount: followerCount,
-    followingList: db.users[username].following || [],
-    isAdmin: db.users[username].isAdmin || false,
-    isModerator: db.users[username].isModerator || false,
-    isVerified: db.users[username].isVerified || false,
-    dmSetting: db.users[username].dmSetting || "allow_all",
-    isOnline: (Date.now() - (db.users[username].lastSeen || 0)) < 30000
-  });
-});
-
-app.post('/api/profile/update', async (req, res) => {
-  const { username, bio, avatarUrl, dmSetting } = req.body;
-  const db = await loadDB();
-  if (!db.users[username]) return res.json({ success: false });
-  if (bio !== undefined) db.users[username].bio = bio;
-  if (avatarUrl !== undefined) db.users[username].avatarUrl = avatarUrl;
-  if (dmSetting !== undefined) db.users[username].dmSetting = dmSetting;
-  await saveDB();
-  res.json({ success: true });
-});
-
-app.post('/api/follow', async (req, res) => {
-  const { username, targetUser } = req.body;
-  const db = await loadDB();
-  if (!db.users[username] || !db.users[targetUser]) return res.json({ success: false });
-  if (!db.users[username].following) db.users[username].following = [];
-  
-  const idx = db.users[username].following.indexOf(targetUser);
-  let isFollowing = false;
-  if (idx > -1) {
-    db.users[username].following.splice(idx, 1);
-  } else {
-    db.users[username].following.push(targetUser);
-    isFollowing = true;
-    db.notifs.push({
-      id: "notif_" + Date.now(), to: targetUser, from: username, type: "follow",
-      content: `${username}さんがあなたをフォローしました`, timestamp: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
-    });
-  }
-  await saveDB();
-  res.json({ success: true, isFollowing });
-});
-
-app.get('/api/tweets', async (req, res) => {
-  const { offset = 0, limit = 20, searchType, searchQuery, currentMe } = req.query;
-  const db = await loadDB();
-  if (currentMe && db.users[currentMe]) {
-    db.users[currentMe].lastSeen = Date.now();
-    await saveDB();
+  if (!user || user.password !== password) {
+    return res.json({ success: false, msg: 'ユーザー名またはパスワードが違います' });
   }
 
-  let filtered = db.tweets.filter(t => {
-    if (searchType === 'follow') {
-      const myFollows = db.users[currentMe] ? (db.users[currentMe].following || []) : [];
-      return myFollows.includes(t.user) || t.user === currentMe;
-    }
-    if (searchType === 'profile') return t.user === searchQuery;
-    if (searchType === 'hashtag') return t.content.includes('#' + searchQuery);
-    if (searchType === 'keyword') return t.content.toLowerCase().includes(searchQuery.toLowerCase());
-    return true;
-  });
+  user.isOnline = true;
+  user.lastSeen = Date.now();
+  user.ipAddress = ip;
+  saveData();
 
-  const total = filtered.length;
-  const sliced = filtered.slice(Number(offset), Number(offset) + Number(limit));
+  res.json({ success: true, token: password, isAdmin: user.isAdmin, isModerator: user.isModerator });
+});
 
-  const mapped = sliced.map(t => {
-    const u = db.users[t.user] || {};
-    t.avatarUrl = u.avatarUrl || "";
-    t.isAuthorVerified = u.isVerified || false;
-    
-    if (t.replyToId) {
-      const parent = db.tweets.find(x => x.id === t.replyToId);
-      if (parent) t.replyToUser = parent.user;
-    }
+// オンラインユーザー一覧取得
+app.get('/api/online-users', (req, res) => {
+  const onlineList = Object.keys(db.users)
+    .filter(u => db.users[u].isOnline)
+    .map(u => ({ username: u, isAdmin: db.users[u].isAdmin, avatarUrl: db.users[u].avatarUrl }));
+  res.json({ count: onlineList.length, users: onlineList });
+});
+
+// 投稿取得
+app.get('/api/tweets', (req, res) => {
+  const { searchType, searchQuery, currentMe } = req.query;
+  let results = [...db.tweets].reverse();
+
+  if (searchType === 'follow' && currentMe && db.users[currentMe]) {
+    const following = db.users[currentMe].following || [];
+    results = results.filter(t => t.user === currentMe || following.includes(t.user));
+  } else if (searchType === 'profile' && searchQuery) {
+    results = results.filter(t => t.user === searchQuery);
+  } else if (searchType === 'keyword' && searchQuery) {
+    results = results.filter(t => t.content.includes(searchQuery));
+  } else if (searchType === 'hashtag' && searchQuery) {
+    results = results.filter(t => t.content.includes('#' + searchQuery));
+  }
+
+  // 引用データの結合
+  results = results.map(t => {
     if (t.repostOfId) {
-      const orig = db.tweets.find(x => x.id === t.repostOfId);
-      if (orig) {
-        const ou = db.users[orig.user] || {};
-        t.repostData = {
-          id: orig.id, user: orig.user, content: orig.content, mediaUrl: orig.mediaUrl,
-          timestamp: orig.timestamp, avatarUrl: ou.avatarUrl || "", isAuthorVerified: ou.isVerified || false
-        };
-      }
+      const original = db.tweets.find(orig => orig.id === t.repostOfId);
+      if (original) t.repostData = original;
     }
     return t;
   });
 
-  res.json({ data: mapped, hasMore: (Number(offset) + Number(limit)) < total });
+  res.json({ data: results, hasMore: false });
 });
 
-app.post('/api/tweets', async (req, res) => {
+// 投稿作成
+app.post('/api/tweets', (req, res) => {
   const { username, textContent, mediaUrl, replyToId, repostOfId } = req.body;
-  if (!textContent && !mediaUrl && !repostOfId) return res.json({ success: false });
+  const userObj = db.users[username];
+  if (!userObj) return res.status(400).json({ success: false });
 
-  const db = await loadDB();
-  const tweetId = "t_" + Date.now() + "_" + Math.floor(Math.random()*1000);
-  
+  userObj.isOnline = true;
+  userObj.lastSeen = Date.now();
+
+  let replyToUser = null;
+  if (replyToId) {
+    const parent = db.tweets.find(t => t.id === replyToId);
+    if (parent) replyToUser = parent.user;
+  }
+
   const newTweet = {
-    id: tweetId, user: username, handle: "@" + username,
-    content: textContent || "", mediaUrl: mediaUrl || "",
-    replyToId: replyToId || null, repostOfId: repostOfId || null,
-    timestamp: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }), likes: []
+    id: '_' + Math.random().toString(36).substr(2, 9),
+    user: username,
+    avatarUrl: userObj.avatarUrl || '',
+    content: textContent || '',
+    mediaUrl: mediaUrl || '',
+    replyToId: replyToId || null,
+    replyToUser: replyToUser,
+    repostOfId: repostOfId || null,
+    likes: [],
+    timestamp: new Date().toLocaleString()
   };
 
-  db.tweets.unshift(newTweet);
-  if (replyToId) {
-    const parent = db.tweets.find(x => x.id === replyToId);
-    if (parent && parent.user !== username) {
-      db.notifs.push({
-        id: "notif_" + Date.now(), to: parent.user, from: username, type: "reply",
-        content: `${username}さんがあなたの投稿に返信しました`, timestamp: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
-      });
-    }
-  }
-  await saveDB();
-  res.json({ success: true });
+  db.tweets.push(newTweet);
+  saveData();
+  res.json({ success: true, tweet: newTweet });
 });
 
-app.post('/api/tweets/like', async (req, res) => {
+// いいね
+app.post('/api/tweets/like', (req, res) => {
   const { tweetId, username } = req.body;
-  const db = await loadDB();
   const tweet = db.tweets.find(t => t.id === tweetId);
-  if (!tweet) return res.json({ likes: [] });
+  if (!tweet) return res.status(404).json({});
+
   if (!tweet.likes) tweet.likes = [];
-  
   const idx = tweet.likes.indexOf(username);
   if (idx > -1) {
     tweet.likes.splice(idx, 1);
   } else {
     tweet.likes.push(username);
-    if (tweet.user !== username) {
-      db.notifs.push({
-        id: "notif_" + Date.now(), to: tweet.user, from: username, type: "like",
-        content: `${username}さんがあなたの投稿にいいねしました`, timestamp: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
-      });
-    }
   }
-  await saveDB();
+  saveData();
   res.json({ likes: tweet.likes });
 });
 
-app.delete('/api/tweets/:id', async (req, res) => {
-  const { id } = req.params;
+// 削除
+app.delete('/api/tweets/:id', (req, res) => {
   const { username } = req.body;
-  const db = await loadDB();
-  const u = db.users[username] || {};
-  
-  db.tweets = db.tweets.filter(t => {
-    if (t.id === id) {
-      if (t.user === username || u.isAdmin || u.isModerator) return false;
-    }
-    return true;
-  });
-  await saveDB();
-  res.json({ success: true });
-});
+  const tweetId = req.params.id;
+  const tweet = db.tweets.find(t => t.id === tweetId);
+  if (!tweet) return res.status(404).json({});
 
-app.post('/api/dm/send', async (req, res) => {
-  const { fromUser, toUser, message } = req.body;
-  if (!message || !message.trim()) return res.json({ success: false, msg: "メッセージが空です" });
-  const db = await loadDB();
-  if (db.users[toUser] && db.users[toUser].dmSetting === "deny_all") {
-    return res.json({ success: false, msg: "❌ 相手はDMを受信拒否しています。" });
+  const user = db.users[username];
+  if (tweet.user === username || (user && (user.isAdmin || user.isModerator))) {
+    db.tweets = db.tweets.filter(t => t.id !== tweetId);
+    saveData();
+    return res.json({ success: true });
   }
+  res.status(403).json({ success: false });
+});
 
-  db.dms.push({
-    id: "dm_" + Date.now(), from: fromUser, to: toUser, message: message,
-    timestamp: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
+// プロフィール情報
+app.get('/api/profile/:username', (req, res) => {
+  const target = req.params.username;
+  const viewer = req.query.viewer;
+  const user = db.users[target];
+  if (!user) return res.status(404).json({});
+
+  res.json({
+    user: target,
+    bio: user.bio,
+    avatarUrl: user.avatarUrl,
+    dmSetting: user.dmSetting,
+    isOnline: user.isOnline,
+    followingCount: (user.following || []).length,
+    followerCount: (user.followers || []).length,
+    isFollowing: viewer && (user.followers || []).includes(viewer)
   });
-  db.notifs.push({
-    id: "notif_" + Date.now(), to: toUser, from: fromUser, type: "dm",
-    content: `${fromUser}さんからDMが届きました`, timestamp: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
-  });
-  await saveDB();
+});
+
+// プロフィール更新
+app.post('/api/profile/update', (req, res) => {
+  const { username, bio, avatarUrl, dmSetting } = req.body;
+  const user = db.users[username];
+  if (!user) return res.status(404).json({});
+
+  if (bio !== undefined) user.bio = bio;
+  if (avatarUrl !== undefined) user.avatarUrl = avatarUrl;
+  if (dmSetting !== undefined) user.dmSetting = dmSetting;
+  saveData();
   res.json({ success: true });
 });
 
-app.get('/api/dm/conversations/:username', async (req, res) => {
-  const { username } = req.params;
-  const db = await loadDB();
-  const contactSet = new Set();
-  db.dms.forEach(d => {
-    if (d.from === username) contactSet.add(d.to);
-    if (d.to === username) contactSet.add(d.from);
-  });
-  const contacts = Array.from(contactSet).map(name => {
-    const uData = db.users[name] || {};
-    return {
-      username: name,
-      avatarUrl: uData.avatarUrl || "",
-      isOnline: (Date.now() - (uData.lastSeen || 0)) < 30000
-    };
-  });
-  res.json(contacts);
+// フォロー切替
+app.post('/api/follow', (req, res) => {
+  const { username, targetUser } = req.body;
+  const me = db.users[username];
+  const target = db.users[targetUser];
+  if (!me || !target) return res.status(400).json({});
+
+  if (!me.following) me.following = [];
+  if (!target.followers) target.followers = [];
+
+  const idx = me.following.indexOf(targetUser);
+  if (idx > -1) {
+    me.following.splice(idx, 1);
+    target.followers = target.followers.filter(u => u !== username);
+  } else {
+    me.following.push(targetUser);
+    target.followers.push(username);
+    db.notifs.push({
+      to: targetUser,
+      content: `@${username} があなたをフォローしました`,
+      timestamp: new Date().toLocaleString()
+    });
+  }
+  saveData();
+  res.json({ success: true });
 });
 
-app.get('/api/dm/chat', async (req, res) => {
+// DM
+app.get('/api/dm/conversations/:username', (req, res) => {
+  const username = req.params.username;
+  const contacts = new Set();
+  db.dms.forEach(d => {
+    if (d.from === username) contacts.add(d.to);
+    if (d.to === username) contacts.add(d.from);
+  });
+
+  const list = Array.from(contacts).map(c => ({
+    username: c,
+    isOnline: db.users[c] ? db.users[c].isOnline : false
+  }));
+  res.json(list);
+});
+
+app.get('/api/dm/chat', (req, res) => {
   const { userA, userB } = req.query;
-  const db = await loadDB();
   const logs = db.dms.filter(d => (d.from === userA && d.to === userB) || (d.from === userB && d.to === userA));
   res.json(logs);
 });
 
-// 管理パネル・検閲用API
-app.get('/api/admin/data', async (req, res) => {
-  const db = await loadDB();
-  const usersWithStatus = {};
-  Object.keys(db.users).forEach(u => {
-    usersWithStatus[u] = {
-      ...db.users[u],
-      isOnline: (Date.now() - (db.users[u].lastSeen || 0)) < 30000,
-      ipAddress: db.users[u].ipAddress || "不明"
-    };
-  });
-  res.json({
-    logs: db.adminLogs || [],
-    recommendations: db.recommendations || [],
-    users: usersWithStatus,
-    allDms: db.dms || []
-  });
-});
+app.post('/api/dm/send', (req, res) => {
+  const { fromUser, toUser, message } = req.body;
+  const target = db.users[toUser];
+  if (!target) return res.status(404).json({});
 
-app.post('/api/admin/action', async (req, res) => {
-  const { action, targetUser, adminUser, extra } = req.body;
-  const db = await loadDB();
-  const adm = db.users[adminUser] || {};
-  if (!adm.isAdmin && !adm.isModerator) return res.json({ success: false, msg: "権限がありません" });
-
-  if (action === 'warn') {
-    db.notifs.push({
-      id: "notif_" + Date.now(), to: targetUser, from: adminUser, type: "warning",
-      content: `🚨 【警告】管理者からの通達: ${extra}`, timestamp: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
-    });
-    addLog(db, '警告送信', `${targetUser}へ: ${extra}`, adminUser);
-  } else if (action === 'mod' && adm.isAdmin) {
-    db.users[targetUser].isModerator = !db.users[targetUser].isModerator;
-    addLog(db, 'モデレーター切替', `${targetUser} -> ${db.users[targetUser].isModerator}`, adminUser);
-  } else if (action === 'verify' && adm.isAdmin) {
-    db.users[targetUser].isVerified = !db.users[targetUser].isVerified;
-    addLog(db, '認証バッジ切替', `${targetUser} -> ${db.users[targetUser].isVerified}`, adminUser);
-  } else if (action === 'ban' && adm.isAdmin) {
-    delete db.users[targetUser];
-    addLog(db, 'アカウント追放(BAN)', targetUser, adminUser);
+  if (target.dmSetting === 'deny_all') {
+    return res.json({ success: false, msg: 'このユーザーはDMを受け付けていません' });
   }
-  await saveDB();
+
+  const dm = { from: fromUser, to: toUser, message, timestamp: new Date().toLocaleString() };
+  db.dms.push(dm);
+  db.notifs.push({ to: toUser, content: `@${fromUser} からDMが届きました`, timestamp: new Date().toLocaleString() });
+  saveData();
   res.json({ success: true });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.get('/api/notifs/:username', (req, res) => {
+  const username = req.params.username;
+  res.json(db.notifs.filter(n => n.to === username));
+});
+
+// 管理パネル用データ
+app.get('/api/admin/data', (req, res) => {
+  res.json({ users: db.users, logs: db.logs, allDms: db.dms, bans: db.bans });
+});
+
+// 管理アクション (時間指定 & 永久IP BAN対応)
+app.post('/api/admin/action', (req, res) => {
+  const { action, targetUser, adminUser, extra, banDurationHours, banReason } = req.body;
+  const target = db.users[targetUser];
+  if (!target) return res.json({ success: false, msg: 'ユーザーが存在しません' });
+
+  if (action === 'ban') {
+    const ip = target.ipAddress;
+    let bannedUntil = 'permanent';
+    if (banDurationHours && banDurationHours !== 'permanent') {
+      bannedUntil = Date.now() + (Number(banDurationHours) * 3600 * 1000);
+    }
+    db.bans.push({
+      ip: ip || 'unknown',
+      bannedUntil,
+      reason: banReason || '規約違反',
+      executedBy: adminUser
+    });
+    db.logs.push({ timestamp: new Date().toLocaleString(), user: adminUser, action: 'BAN', details: `ユーザー @${targetUser} (IP: ${ip}) をBAN (${bannedUntil === 'permanent' ? '永久' : banDurationHours + '時間'}) 理由: ${banReason}` });
+    saveData();
+    return res.json({ success: true });
+  }
+
+  if (action === 'mod') {
+    target.isModerator = !target.isModerator;
+  } else if (action === 'verify') {
+    target.isVerified = !target.isVerified;
+  } else if (action === 'warn') {
+    db.notifs.push({ to: targetUser, content: `【運営からの警告】${extra || 'マナーを守ってください'}`, timestamp: new Date().toLocaleString() });
+  }
+
+  db.logs.push({ timestamp: new Date().toLocaleString(), user: adminUser, action: action.toUpperCase(), details: targetUser });
+  saveData();
+  res.json({ success: true });
+});
+
+module.exports = app;
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+}
