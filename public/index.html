@@ -2,7 +2,7 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8">
-    <title>X Ultra 移植版</title>
+    <title>X Ultra - Live & Admin Censorship</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       .theme-dark { background-color: #0b0f19; color: #f3f4f6; }
@@ -20,10 +20,9 @@
   </head>
   <body class="theme-dark font-sans antialiased min-h-screen">
 
-    <!-- 認証ウォール -->
     <div id="authWall" class="fixed inset-0 bg-[#0b0f19] flex flex-col items-center justify-center z-50 p-4">
       <div class="mb-6 text-4xl font-extrabold tracking-widest text-white">
-        <span class="text-blue-500">X</span> <span class="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400">Complete Ultra</span>
+        <span class="text-blue-500">X</span> <span class="text-xs bg-gray-800 px-2 py-1 rounded text-gray-400">Live Edition</span>
       </div>
       <div class="bg-card p-8 rounded-2xl w-full max-w-md border border-main shadow-2xl">
         <h2 id="authTitle" class="text-xl font-bold mb-2 text-center">Xにログイン</h2>
@@ -39,17 +38,18 @@
       </div>
     </div>
 
-    <!-- メインレイアウト -->
     <div id="mainApp" class="max-w-6xl mx-auto min-h-screen grid grid-cols-1 md:grid-cols-4 border-l border-r border-main hidden">
       
-      <!-- サイドナビ -->
       <aside class="col-span-1 border-r border-main p-4 flex flex-col justify-between sticky top-0 h-screen">
         <div class="space-y-6">
           <h1 class="text-2xl font-black text-blue-500 tracking-wider cursor-pointer" onclick="navigateTo('home')">𝕏 Ultra</h1>
           <nav id="bottomNavContainer" class="space-y-2 flex flex-col text-sm font-semibold"></nav>
         </div>
         <div class="flex items-center gap-3 p-2 bg-card rounded-xl border border-main">
-          <div id="myAvatar" class="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white overflow-hidden">?</div>
+          <div class="relative w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white overflow-hidden">
+            <span id="myAvatarText">?</span>
+            <span id="myOnlineDot" class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-black rounded-full"></span>
+          </div>
           <div class="overflow-hidden">
             <p id="myUsernameDisplay" class="font-bold text-sm truncate"></p>
             <span class="text-[10px] text-green-400">● オンライン</span>
@@ -57,7 +57,6 @@
         </div>
       </aside>
 
-      <!-- メイン画面 -->
       <main class="col-span-3 pb-24 min-h-screen border-r border-main">
         <header class="sticky top-0 bg-inherit backdrop-blur border-b border-main z-10 px-6 py-4 flex justify-between items-center">
           <h2 id="pageTitle" class="text-xl font-bold">ホーム</h2>
@@ -76,7 +75,6 @@
         <div id="profileHeader" class="border-b border-main p-6 bg-card/20 hidden"></div>
         <div id="settingsSection" class="hidden p-6 space-y-6"></div>
         
-        <!-- DMセクション -->
         <div id="dmSection" class="hidden grid grid-cols-3 h-[calc(100vh-80px)]">
           <div class="col-span-1 border-r border-main p-4 overflow-y-auto">
             <h3 class="font-bold text-sm mb-3">📬 DMメッセージ一覧</h3>
@@ -93,9 +91,10 @@
         </div>
 
         <div id="notifSection" class="hidden p-6 space-y-3"></div>
+        
+        <!-- GAS版風 管理パネル -->
         <div id="adminSection" class="hidden p-6 space-y-6"></div>
 
-        <!-- 投稿フォーム (バナーエリア付き) -->
         <div id="tweetFormArea" class="p-6 border-b border-main space-y-3">
           <div id="formContextBanner" class="hidden bg-blue-900/40 text-blue-300 text-xs px-3 py-1.5 rounded-lg flex justify-between items-center">
             <span id="formContextText">返信中</span>
@@ -134,7 +133,7 @@
       let activeReplyToId = null;
       let activeRepostOfId = null;
       let uploadedMediaUrl = "";
-      let autoRefreshTimer = null;
+      let liveInterval = null;
 
       window.onload = function() {
         const user = localStorage.getItem('X_RESP_USER');
@@ -197,16 +196,22 @@
         document.getElementById('authWall').classList.add('hidden');
         document.getElementById('mainApp').classList.remove('hidden');
         document.getElementById('myUsernameDisplay').innerText = "@" + currentMe;
+        document.getElementById('myAvatarText').innerText = currentMe[0].toUpperCase();
 
         buildNavigation();
         navigateTo('home');
 
-        if(autoRefreshTimer) clearInterval(autoRefreshTimer);
-        autoRefreshTimer = setInterval(() => {
-          if(currentSearchType === 'all' && !document.getElementById('timelineSection').classList.contains('hidden')) {
+        // リアルタイム自動更新ループ（タイムライン＆DMチャット）
+        if(liveInterval) clearInterval(liveInterval);
+        liveInterval = setInterval(() => {
+          if (currentSearchType === 'all' && !document.getElementById('timelineSection').classList.contains('hidden')) {
             loadTimeline(false, true);
           }
-        }, 10000);
+          if (!document.getElementById('dmSection').classList.contains('hidden')) {
+            loadDMConversations();
+            if (activeDMTarget) loadDMLogs(true);
+          }
+        }, 3000);
       }
 
       function buildNavigation() {
@@ -251,7 +256,7 @@
         } else if (target === 'profile') {
           viewProfile(currentMe);
         } else if (target === 'admin') {
-          document.getElementById('pageTitle').innerText = "モデレーション・管理";
+          document.getElementById('pageTitle').innerText = "モデレーション管理パネル";
           document.getElementById('adminSection').classList.remove('hidden');
           renderAdminPanel();
         }
@@ -298,7 +303,7 @@
           }
 
           container.insertAdjacentHTML('beforeend', `
-            <div class="p-6 hover:bg-card/20 transition flex gap-4" id="tweet_${t.id}">
+            <div class="p-6 hover:bg-card/20 transition flex gap-4">
               <div class="w-12 h-12 rounded-full bg-slate-600 flex items-center justify-center font-bold text-white flex-shrink-0 cursor-pointer" onclick="viewProfile('${t.user}')">${t.user[0].toUpperCase()}</div>
               <div class="flex-1">
                 <div class="flex items-center justify-between text-sm">
@@ -365,11 +370,8 @@
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
-            username: currentMe,
-            textContent: text,
-            mediaUrl: uploadedMediaUrl,
-            replyToId: activeReplyToId,
-            repostOfId: activeRepostOfId
+            username: currentMe, textContent: text, mediaUrl: uploadedMediaUrl,
+            replyToId: activeReplyToId, repostOfId: activeRepostOfId
           })
         }).then(() => {
           document.getElementById('tweetInput').value = '';
@@ -416,7 +418,7 @@
                   <h3 class="text-2xl font-bold">@${prof.user}</h3>
                   <p class="text-sm mt-1 text-gray-300">${prof.bio || '自己紹介なし'}</p>
                 </div>
-                ${!isMe ? `<button onclick="toggleFollow('${username}')" id="followBtn" class="bg-white text-black font-bold px-4 py-1.5 rounded-full text-xs">フォロー切替</button>` : ''}
+                ${!isMe ? `<button onclick="toggleFollow('${username}')" class="bg-white text-black font-bold px-4 py-1.5 rounded-full text-xs">フォロー切替</button>` : ''}
               </div>
               <div class="flex gap-4 text-xs text-gray-400 mt-3">
                 <span><strong>${prof.followingCount}</strong> フォロー中</span>
@@ -470,7 +472,7 @@
         loadDMLogs();
       }
 
-      function loadDMLogs() {
+      function loadDMLogs(silent = false) {
         if(!activeDMTarget) return;
         fetch(`/api/dm/chat?userA=${currentMe}&userB=${activeDMTarget}`)
           .then(res => res.json())
@@ -487,7 +489,7 @@
                 </div>
               `);
             });
-            box.scrollTop = box.scrollHeight;
+            if(!silent) box.scrollTop = box.scrollHeight;
           });
       }
 
@@ -558,17 +560,39 @@
         }).then(() => alert("設定を保存しました！"));
       }
 
+      // GAS版デザインを再現した管理パネル ＆ DM検閲機能
       function renderAdminPanel() {
         fetch('/api/admin/data')
           .then(res => res.json())
           .then(data => {
             const sec = document.getElementById('adminSection');
-            let userOptions = Object.keys(data.users).map(u => `<option value="${u}">@${u}</option>`).join('');
             
+            let userRows = "";
+            Object.keys(data.users).forEach(u => {
+              const uData = data.users[u];
+              const dotClass = uData.isOnline ? 'bg-green-500' : 'bg-red-500';
+              const statusLabel = uData.isOnline ? 'オンライン' : 'オフライン';
+              
+              userRows += `
+                <tr class="border-b border-main text-xs">
+                  <td class="p-2 flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 ${dotClass} rounded-full" title="${statusLabel}"></span>
+                    <strong>@${u}</strong> ${uData.isAdmin ? '👑' : ''} ${uData.isModerator ? '🛡️' : ''}
+                  </td>
+                  <td class="p-2">${uData.ipAddress || '不明'}</td>
+                  <td class="p-2">
+                    <button onclick="inspectUserDMs('${u}')" class="bg-blue-600 text-white px-2 py-1 rounded font-bold">DM検閲</button>
+                  </td>
+                </tr>
+              `;
+            });
+
+            let userOptions = Object.keys(data.users).map(u => `<option value="${u}">@${u}</option>`).join('');
             let logHtml = data.logs.map(l => `<div class="text-xs border-b border-main py-1"><strong>[${l.timestamp}] ${l.user}</strong>: ${l.action} - ${l.details}</div>`).join('');
 
             sec.innerHTML = `
               <div class="space-y-6">
+                <!-- ユーザーコントロール -->
                 <div class="bg-card p-4 rounded-xl border border-main space-y-3">
                   <h3 class="font-bold text-sm">ユーザーモデレーション</h3>
                   <div class="flex gap-2">
@@ -576,18 +600,70 @@
                     <input type="text" id="adminExtra" class="flex-1 input-box border rounded-lg p-2 text-xs" placeholder="警告理由など">
                   </div>
                   <div class="flex gap-2">
-                    <button onclick="execAdminAction('warn')" class="bg-yellow-600 text-white text-xs px-4 py-2 rounded-lg font-bold">警告を送信</button>
+                    <button onclick="execAdminAction('warn')" class="bg-yellow-600 text-white text-xs px-4 py-2 rounded-lg font-bold">警告送信</button>
                     ${isMyAdmin ? `<button onclick="execAdminAction('mod')" class="bg-purple-600 text-white text-xs px-4 py-2 rounded-lg font-bold">モデレーター切替</button>` : ''}
                     ${isMyAdmin ? `<button onclick="execAdminAction('verify')" class="bg-blue-600 text-white text-xs px-4 py-2 rounded-lg font-bold">認証バッジ切替</button>` : ''}
                     ${isMyAdmin ? `<button onclick="execAdminAction('ban')" class="bg-red-600 text-white text-xs px-4 py-2 rounded-lg font-bold">アカウントBAN</button>` : ''}
                   </div>
                 </div>
+
+                <!-- ユーザー一覧 (IP・オンライン・検閲付き) -->
+                <div class="bg-card p-4 rounded-xl border border-main">
+                  <h3 class="font-bold text-sm mb-3">ユーザー一覧 & IP / 検閲モニター</h3>
+                  <div class="max-h-60 overflow-y-auto">
+                    <table class="w-full text-left">
+                      <thead>
+                        <tr class="border-b border-main text-xs text-gray-400">
+                          <th class="p-2">ユーザー / 状態</th>
+                          <th class="p-2">IPアドレス</th>
+                          <th class="p-2">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>${userRows}</tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- DM検閲ビューワーエリア -->
+                <div id="dmInspectionBox" class="bg-card p-4 rounded-xl border border-main hidden">
+                  <h3 id="inspectTitle" class="font-bold text-sm mb-2 text-red-400">DM検閲ビューワー</h3>
+                  <div id="inspectContent" class="max-h-48 overflow-y-auto space-y-2 text-xs bg-black/20 p-3 rounded-lg"></div>
+                </div>
+
+                <!-- 監査ログ -->
                 <div class="bg-card p-4 rounded-xl border border-main">
                   <h3 class="font-bold text-sm mb-2">監査ログ</h3>
-                  <div class="max-h-60 overflow-y-auto space-y-1">${logHtml || '<p class="text-xs text-gray-500">ログなし</p>'}</div>
+                  <div class="max-h-40 overflow-y-auto space-y-1">${logHtml || '<p class="text-xs text-gray-500">ログなし</p>'}</div>
                 </div>
               </div>
             `;
+          });
+      }
+
+      function inspectUserDMs(targetUser) {
+        fetch('/api/admin/data')
+          .then(res => res.json())
+          .then(data => {
+            const box = document.getElementById('dmInspectionBox');
+            const content = document.getElementById('inspectContent');
+            document.getElementById('inspectTitle').innerText = `@${targetUser} のDM履歴検閲`;
+            box.classList.remove('hidden');
+            content.innerHTML = "";
+
+            const targetDms = data.allDms.filter(d => d.from === targetUser || d.to === targetUser);
+            if(targetDms.length === 0) {
+              content.innerHTML = '<p class="text-gray-500">DM履歴はありません</p>';
+              return;
+            }
+
+            targetDms.forEach(d => {
+              content.insertAdjacentHTML('beforeend', `
+                <div class="border-b border-main pb-1">
+                  <span class="text-gray-400">[${d.timestamp}]</span> <strong>${d.from}</strong> ➔ <strong>${d.to}</strong>: 
+                  <span class="text-white">${d.message}</span>
+                </div>
+              `);
+            });
           });
       }
 
