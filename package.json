@@ -1,0 +1,13 @@
+{
+  "name": "x-respect-app-vercel",
+  "version": "2.0.0",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "googleapis": "^134.0.0"
+  }
+}
