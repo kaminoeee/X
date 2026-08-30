@@ -46,11 +46,12 @@ function saveData() {
 
 loadData();
 
+// 定期的なファイル同期とオンライン判定の調整（オンライン猶予を3分に延長して消えにくくする）
 setInterval(() => {
   const now = Date.now();
   if (!db.users) return;
   Object.keys(db.users).forEach(u => {
-    if (db.users[u].isOnline && (now - (db.users[u].lastSeen || 0) > 120000)) {
+    if (db.users[u].isOnline && (now - (db.users[u].lastSeen || 0) > 180000)) {
       db.users[u].isOnline = false;
     }
   });
@@ -79,6 +80,18 @@ function checkBan(req, res, next) {
 }
 
 app.use(checkBan);
+
+// アクティビティ更新ヘルパー（アクションごとにオンラインを維持）
+function touchUser(username, ip) {
+  if (!db.users || !db.users[username]) return;
+  db.users[username].isOnline = true;
+  db.users[username].lastSeen = Date.now();
+  if (ip && ip !== 'unknown') {
+    db.users[username].ipAddress = ip;
+    if (!db.ipLogs) db.ipLogs = {};
+    db.ipLogs[username] = ip;
+  }
+}
 
 app.post('/api/register', (req, res) => {
   loadData();
@@ -135,27 +148,10 @@ app.post('/api/login', (req, res) => {
     return res.json({ success: false, msg: 'ユーザー名またはパスワードが違います' });
   }
 
-  user.isOnline = true;
-  user.lastSeen = Date.now();
-  user.ipAddress = ip;
-
-  if (!db.ipLogs) db.ipLogs = {};
-  db.ipLogs[username] = ip;
-
+  touchUser(username, ip);
   saveData();
-  res.json({ success: true, token: password, isAdmin: user.isAdmin, isModerator: user.isModerator });
-});
 
-// オンライン維持用ハートビートエンドポイント
-app.post('/api/heartbeat', (req, res) => {
-  loadData();
-  const { username } = req.body;
-  if (username && db.users && db.users[username]) {
-    db.users[username].isOnline = true;
-    db.users[username].lastSeen = Date.now();
-    saveData();
-  }
-  res.json({ success: true });
+  res.json({ success: true, token: password, isAdmin: user.isAdmin, isModerator: user.isModerator });
 });
 
 app.get('/api/online-users', (req, res) => {
@@ -170,6 +166,8 @@ app.get('/api/online-users', (req, res) => {
 app.get('/api/tweets', (req, res) => {
   loadData();
   const { searchType, searchQuery, currentMe } = req.query;
+  if (currentMe) touchUser(currentMe);
+
   let results = [...(db.tweets || [])].reverse();
 
   if (searchType === 'follow' && currentMe && db.users && db.users[currentMe]) {
@@ -201,8 +199,7 @@ app.post('/api/tweets', (req, res) => {
   const userObj = db.users[username];
   if (!userObj) return res.status(400).json({ success: false, msg: 'ユーザーが見つかりません' });
 
-  userObj.isOnline = true;
-  userObj.lastSeen = Date.now();
+  touchUser(username);
 
   let replyToUser = null;
   if (replyToId) {
@@ -232,10 +229,7 @@ app.post('/api/tweets', (req, res) => {
 app.post('/api/tweets/like', (req, res) => {
   loadData();
   const { tweetId, username } = req.body;
-  if (username && db.users && db.users[username]) {
-    db.users[username].isOnline = true;
-    db.users[username].lastSeen = Date.now();
-  }
+  touchUser(username);
   const tweet = (db.tweets || []).find(t => t.id === tweetId);
   if (!tweet) return res.status(404).json({});
 
@@ -253,10 +247,7 @@ app.post('/api/tweets/like', (req, res) => {
 app.delete('/api/tweets/:id', (req, res) => {
   loadData();
   const { username } = req.body;
-  if (username && db.users && db.users[username]) {
-    db.users[username].isOnline = true;
-    db.users[username].lastSeen = Date.now();
-  }
+  touchUser(username);
   const tweetId = req.params.id;
   const tweet = (db.tweets || []).find(t => t.id === tweetId);
   if (!tweet) return res.status(404).json({});
@@ -274,6 +265,8 @@ app.get('/api/profile/:username', (req, res) => {
   loadData();
   const target = req.params.username;
   const viewer = req.query.viewer;
+  if (viewer) touchUser(viewer);
+
   if (!db.users) db.users = {};
   const user = db.users[target];
   if (!user) return res.status(404).json({});
@@ -293,12 +286,11 @@ app.get('/api/profile/:username', (req, res) => {
 app.post('/api/profile/update', (req, res) => {
   loadData();
   const { username, bio, avatarUrl, dmSetting } = req.body;
+  touchUser(username);
   if (!db.users) db.users = {};
   const user = db.users[username];
   if (!user) return res.status(404).json({});
 
-  user.isOnline = true;
-  user.lastSeen = Date.now();
   if (bio !== undefined) user.bio = bio;
   if (avatarUrl !== undefined) user.avatarUrl = avatarUrl;
   if (dmSetting !== undefined) user.dmSetting = dmSetting;
@@ -309,14 +301,11 @@ app.post('/api/profile/update', (req, res) => {
 app.post('/api/follow', (req, res) => {
   loadData();
   const { username, targetUser } = req.body;
+  touchUser(username);
   if (!db.users) db.users = {};
   const me = db.users[username];
   const target = db.users[targetUser];
   if (!me || !target) return res.status(400).json({});
-
-  // アクション実行ユーザーのオンライン状態を確実に維持
-  me.isOnline = true;
-  me.lastSeen = Date.now();
 
   if (!me.following) me.following = [];
   if (!target.followers) target.followers = [];
@@ -342,10 +331,7 @@ app.post('/api/follow', (req, res) => {
 app.get('/api/dm/conversations/:username', (req, res) => {
   loadData();
   const username = req.params.username;
-  if (username && db.users && db.users[username]) {
-    db.users[username].isOnline = true;
-    db.users[username].lastSeen = Date.now();
-  }
+  touchUser(username);
   const contacts = new Set();
   (db.dms || []).forEach(d => {
     if (d.from === username) contacts.add(d.to);
@@ -362,6 +348,7 @@ app.get('/api/dm/conversations/:username', (req, res) => {
 app.get('/api/dm/chat', (req, res) => {
   loadData();
   const { userA, userB } = req.query;
+  if (userA) touchUser(userA);
   const logs = (db.dms || []).filter(d => (d.from === userA && d.to === userB) || (d.from === userB && d.to === userA));
   res.json(logs);
 });
@@ -369,13 +356,10 @@ app.get('/api/dm/chat', (req, res) => {
 app.post('/api/dm/send', (req, res) => {
   loadData();
   const { fromUser, toUser, message } = req.body;
+  touchUser(fromUser);
   if (!db.users) db.users = {};
-  const me = db.users[fromUser];
   const target = db.users[toUser];
-  if (!target || !me) return res.status(404).json({});
-
-  me.isOnline = true;
-  me.lastSeen = Date.now();
+  if (!target) return res.status(404).json({});
 
   if (target.dmSetting === 'deny_all') {
     return res.json({ success: false, msg: 'このユーザーはDMを受け付けていません' });
@@ -393,6 +377,7 @@ app.post('/api/dm/send', (req, res) => {
 app.get('/api/notifs/:username', (req, res) => {
   loadData();
   const username = req.params.username;
+  touchUser(username);
   res.json((db.notifs || []).filter(n => n.to === username));
 });
 
