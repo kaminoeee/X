@@ -7,59 +7,62 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// データ保存用ファイルパス (Vercelの一時領域またはローカル)
+// Vercel等のサーバーレス環境でも絶対にデータが消えないように大域変数に保持
+if (!global._xUltraDb) {
+  global._xUltraDb = {
+    users: {},
+    tweets: [],
+    dms: [],
+    notifs: [],
+    bans: [],
+    logs: []
+  };
+}
+let db = global._xUltraDb;
 const DATA_FILE = path.join('/tmp', 'x_ultra_data.json');
 
-let db = {
-  users: {},
-  tweets: [],
-  dms: [],
-  notifs: [],
-  bans: [], // { ip, bannedUntil, reason, executedBy }
-  logs: []
-};
-
-// データロード
 function loadData() {
   try {
     if (fs.existsSync(DATA_FILE)) {
       const data = fs.readFileSync(DATA_FILE, 'utf8');
-      db = JSON.parse(data);
+      const parsed = JSON.parse(data);
+      if (parsed && parsed.users) {
+        global._xUltraDb = parsed;
+        db = global._xUltraDb;
+      }
     }
   } catch (e) {
-    console.error("Data load error:", e);
+    console.error("Data load error ignored, using memory DB.");
   }
 }
 
-// データセーブ
 function saveData() {
   try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
+    fs.writeFileSync(DATA_FILE, JSON.stringify(db));
   } catch (e) {
-    console.error("Data save error:", e);
+    // Vercelの読み取り専用領域などでエラーが出てもサーバーがクラッシュしないようにする
+    console.error("Data save warning:", e.message);
   }
 }
 
 loadData();
 
-// 定期的にオンライン状態をオフラインに落とす判定 (30秒以上更新がない場合)
+// 定期的にオンライン状態を自動更新
 setInterval(() => {
   const now = Date.now();
-  let changed = false;
-  Object.keys(db.users).forEach(u => {
-    if (db.users[u].isOnline && (now - (db.users[u].lastSeen || 0) > 20000)) {
+  Object.keys(db.users || {}).forEach(u => {
+    if (db.users[u].isOnline && (now - (db.users[u].lastSeen || 0) > 30000)) {
       db.users[u].isOnline = false;
-      changed = true;
     }
   });
-  if (changed) saveData();
 }, 5000);
 
-// BANチェックミドルウェア
+// BANチェック用ミドルウェア
 function checkBan(req, res, next) {
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
   const now = Date.now();
   
+  if (!db.bans) db.bans = [];
   const activeBan = db.bans.find(b => b.ip === ip);
   if (activeBan) {
     if (activeBan.bannedUntil === 'permanent' || activeBan.bannedUntil > now) {
@@ -70,9 +73,7 @@ function checkBan(req, res, next) {
         bannedUntil: activeBan.bannedUntil === 'permanent' ? '永久' : new Date(activeBan.bannedUntil).toLocaleString()
       });
     } else {
-      // 期限切れBANの解除
       db.bans = db.bans.filter(b => b.ip !== ip);
-      saveData();
     }
   }
   next();
@@ -80,17 +81,17 @@ function checkBan(req, res, next) {
 
 app.use(checkBan);
 
-// 認証・登録
+// ユーザー登録
 app.post('/api/register', (req, res) => {
   const { username, password, adminPassword } = req.body;
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
   if (!username || !password) return res.json({ success: false, msg: '入力値が不正です' });
+  if (!db.users) db.users = {};
   if (db.users[username]) return res.json({ success: false, msg: '既に存在するユーザーIDです' });
 
   let isAdmin = false;
   let isModerator = false;
 
-  // 隠し管理者キーの一致確認 (環境変数 または 秘密のコード 'SECRET_ADMIN_999')
   if (adminPassword) {
     if (adminPassword === (process.env.ADMIN_SECRET_KEY || 'SECRET_ADMIN_999')) {
       isAdmin = true;
@@ -115,15 +116,17 @@ app.post('/api/register', (req, res) => {
     lastSeen: Date.now()
   };
 
-  db.logs.push({ timestamp: new Date().toLocaleString(), user: username, action: 'REGISTER', details: `新規登録 (IP: ${ip})` });
+  if (!db.logs) db.logs = [];
+  db.logs.push({ timestamp: new Date().toLocaleString(), user: username, action: 'REGISTER', details: `IP: ${ip}` });
   saveData();
-  res.json({ success: { msg: 'アカウント作成成功！' }, msg: 'アカウント作成成功！' });
+  res.json({ success: true, msg: 'アカウント作成成功！' });
 });
 
+// ログイン
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
-  const user = db.users[username];
+  const user = db.users && db.users[username];
 
   if (!user || user.password !== password) {
     return res.json({ success: false, msg: 'ユーザー名またはパスワードが違います' });
@@ -137,8 +140,9 @@ app.post('/api/login', (req, res) => {
   res.json({ success: true, token: password, isAdmin: user.isAdmin, isModerator: user.isModerator });
 });
 
-// オンラインユーザー一覧取得
+// オンラインユーザー一覧
 app.get('/api/online-users', (req, res) => {
+  if (!db.users) db.users = {};
   const onlineList = Object.keys(db.users)
     .filter(u => db.users[u].isOnline)
     .map(u => ({ username: u, isAdmin: db.users[u].isAdmin, avatarUrl: db.users[u].avatarUrl }));
@@ -148,23 +152,22 @@ app.get('/api/online-users', (req, res) => {
 // 投稿取得
 app.get('/api/tweets', (req, res) => {
   const { searchType, searchQuery, currentMe } = req.query;
-  let results = [...db.tweets].reverse();
+  let results = [...(db.tweets || [])].reverse();
 
-  if (searchType === 'follow' && currentMe && db.users[currentMe]) {
+  if (searchType === 'follow' && currentMe && db.users && db.users[currentMe]) {
     const following = db.users[currentMe].following || [];
     results = results.filter(t => t.user === currentMe || following.includes(t.user));
   } else if (searchType === 'profile' && searchQuery) {
     results = results.filter(t => t.user === searchQuery);
   } else if (searchType === 'keyword' && searchQuery) {
-    results = results.filter(t => t.content.includes(searchQuery));
+    results = results.filter(t => t.content && t.content.includes(searchQuery));
   } else if (searchType === 'hashtag' && searchQuery) {
-    results = results.filter(t => t.content.includes('#' + searchQuery));
+    results = results.filter(t => t.content && t.content.includes('#' + searchQuery));
   }
 
-  // 引用データの結合
   results = results.map(t => {
     if (t.repostOfId) {
-      const original = db.tweets.find(orig => orig.id === t.repostOfId);
+      const original = (db.tweets || []).find(orig => orig.id === t.repostOfId);
       if (original) t.repostData = original;
     }
     return t;
@@ -176,15 +179,16 @@ app.get('/api/tweets', (req, res) => {
 // 投稿作成
 app.post('/api/tweets', (req, res) => {
   const { username, textContent, mediaUrl, replyToId, repostOfId } = req.body;
+  if (!db.users) db.users = {};
   const userObj = db.users[username];
-  if (!userObj) return res.status(400).json({ success: false });
+  if (!userObj) return res.status(400).json({ success: false, msg: 'ユーザーが見つかりません' });
 
   userObj.isOnline = true;
   userObj.lastSeen = Date.now();
 
   let replyToUser = null;
   if (replyToId) {
-    const parent = db.tweets.find(t => t.id === replyToId);
+    const parent = (db.tweets || []).find(t => t.id === replyToId);
     if (parent) replyToUser = parent.user;
   }
 
@@ -201,6 +205,7 @@ app.post('/api/tweets', (req, res) => {
     timestamp: new Date().toLocaleString()
   };
 
+  if (!db.tweets) db.tweets = [];
   db.tweets.push(newTweet);
   saveData();
   res.json({ success: true, tweet: newTweet });
@@ -209,7 +214,7 @@ app.post('/api/tweets', (req, res) => {
 // いいね
 app.post('/api/tweets/like', (req, res) => {
   const { tweetId, username } = req.body;
-  const tweet = db.tweets.find(t => t.id === tweetId);
+  const tweet = (db.tweets || []).find(t => t.id === tweetId);
   if (!tweet) return res.status(404).json({});
 
   if (!tweet.likes) tweet.likes = [];
@@ -223,14 +228,14 @@ app.post('/api/tweets/like', (req, res) => {
   res.json({ likes: tweet.likes });
 });
 
-// 削除
+// 投稿削除
 app.delete('/api/tweets/:id', (req, res) => {
   const { username } = req.body;
   const tweetId = req.params.id;
-  const tweet = db.tweets.find(t => t.id === tweetId);
+  const tweet = (db.tweets || []).find(t => t.id === tweetId);
   if (!tweet) return res.status(404).json({});
 
-  const user = db.users[username];
+  const user = db.users && db.users[username];
   if (tweet.user === username || (user && (user.isAdmin || user.isModerator))) {
     db.tweets = db.tweets.filter(t => t.id !== tweetId);
     saveData();
@@ -239,10 +244,11 @@ app.delete('/api/tweets/:id', (req, res) => {
   res.status(403).json({ success: false });
 });
 
-// プロフィール情報
+// プロフィール情報取得
 app.get('/api/profile/:username', (req, res) => {
   const target = req.params.username;
   const viewer = req.query.viewer;
+  if (!db.users) db.users = {};
   const user = db.users[target];
   if (!user) return res.status(404).json({});
 
@@ -261,6 +267,7 @@ app.get('/api/profile/:username', (req, res) => {
 // プロフィール更新
 app.post('/api/profile/update', (req, res) => {
   const { username, bio, avatarUrl, dmSetting } = req.body;
+  if (!db.users) db.users = {};
   const user = db.users[username];
   if (!user) return res.status(404).json({});
 
@@ -271,9 +278,10 @@ app.post('/api/profile/update', (req, res) => {
   res.json({ success: true });
 });
 
-// フォロー切替
+// フォロー / アンフォロー
 app.post('/api/follow', (req, res) => {
   const { username, targetUser } = req.body;
+  if (!db.users) db.users = {};
   const me = db.users[username];
   const target = db.users[targetUser];
   if (!me || !target) return res.status(400).json({});
@@ -288,6 +296,7 @@ app.post('/api/follow', (req, res) => {
   } else {
     me.following.push(targetUser);
     target.followers.push(username);
+    if (!db.notifs) db.notifs = [];
     db.notifs.push({
       to: targetUser,
       content: `@${username} があなたをフォローしました`,
@@ -298,30 +307,31 @@ app.post('/api/follow', (req, res) => {
   res.json({ success: true });
 });
 
-// DM
+// DM一覧・履歴
 app.get('/api/dm/conversations/:username', (req, res) => {
   const username = req.params.username;
   const contacts = new Set();
-  db.dms.forEach(d => {
+  (db.dms || []).forEach(d => {
     if (d.from === username) contacts.add(d.to);
     if (d.to === username) contacts.add(d.from);
   });
 
   const list = Array.from(contacts).map(c => ({
     username: c,
-    isOnline: db.users[c] ? db.users[c].isOnline : false
+    isOnline: db.users && db.users[c] ? db.users[c].isOnline : false
   }));
   res.json(list);
 });
 
 app.get('/api/dm/chat', (req, res) => {
   const { userA, userB } = req.query;
-  const logs = db.dms.filter(d => (d.from === userA && d.to === userB) || (d.from === userB && d.to === userA));
+  const logs = (db.dms || []).filter(d => (d.from === userA && d.to === userB) || (d.from === userB && d.to === userA));
   res.json(logs);
 });
 
 app.post('/api/dm/send', (req, res) => {
   const { fromUser, toUser, message } = req.body;
+  if (!db.users) db.users = {};
   const target = db.users[toUser];
   if (!target) return res.status(404).json({});
 
@@ -330,7 +340,9 @@ app.post('/api/dm/send', (req, res) => {
   }
 
   const dm = { from: fromUser, to: toUser, message, timestamp: new Date().toLocaleString() };
+  if (!db.dms) db.dms = [];
   db.dms.push(dm);
+  if (!db.notifs) db.notifs = [];
   db.notifs.push({ to: toUser, content: `@${fromUser} からDMが届きました`, timestamp: new Date().toLocaleString() });
   saveData();
   res.json({ success: true });
@@ -338,17 +350,17 @@ app.post('/api/dm/send', (req, res) => {
 
 app.get('/api/notifs/:username', (req, res) => {
   const username = req.params.username;
-  res.json(db.notifs.filter(n => n.to === username));
+  res.json((db.notifs || []).filter(n => n.to === username));
 });
 
-// 管理パネル用データ
+// 管理パネル
 app.get('/api/admin/data', (req, res) => {
-  res.json({ users: db.users, logs: db.logs, allDms: db.dms, bans: db.bans });
+  res.json({ users: db.users || {}, logs: db.logs || [], allDms: db.dms || [], bans: db.bans || [] });
 });
 
-// 管理アクション (時間指定 & 永久IP BAN対応)
 app.post('/api/admin/action', (req, res) => {
   const { action, targetUser, adminUser, extra, banDurationHours, banReason } = req.body;
+  if (!db.users) db.users = {};
   const target = db.users[targetUser];
   if (!target) return res.json({ success: false, msg: 'ユーザーが存在しません' });
 
@@ -358,13 +370,15 @@ app.post('/api/admin/action', (req, res) => {
     if (banDurationHours && banDurationHours !== 'permanent') {
       bannedUntil = Date.now() + (Number(banDurationHours) * 3600 * 1000);
     }
+    if (!db.bans) db.bans = [];
     db.bans.push({
       ip: ip || 'unknown',
       bannedUntil,
       reason: banReason || '規約違反',
       executedBy: adminUser
     });
-    db.logs.push({ timestamp: new Date().toLocaleString(), user: adminUser, action: 'BAN', details: `ユーザー @${targetUser} (IP: ${ip}) をBAN (${bannedUntil === 'permanent' ? '永久' : banDurationHours + '時間'}) 理由: ${banReason}` });
+    if (!db.logs) db.logs = [];
+    db.logs.push({ timestamp: new Date().toLocaleString(), user: adminUser, action: 'BAN', details: `@${targetUser} (IP: ${ip})` });
     saveData();
     return res.json({ success: true });
   }
@@ -374,9 +388,11 @@ app.post('/api/admin/action', (req, res) => {
   } else if (action === 'verify') {
     target.isVerified = !target.isVerified;
   } else if (action === 'warn') {
-    db.notifs.push({ to: targetUser, content: `【運営からの警告】${extra || 'マナーを守ってください'}`, timestamp: new Date().toLocaleString() });
+    if (!db.notifs) db.notifs = [];
+    db.notifs.push({ to: targetUser, content: `【警告】${extra || 'マナーを守ってください'}`, timestamp: new Date().toLocaleString() });
   }
 
+  if (!db.logs) db.logs = [];
   db.logs.push({ timestamp: new Date().toLocaleString(), user: adminUser, action: action.toUpperCase(), details: targetUser });
   saveData();
   res.json({ success: true });
