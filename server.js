@@ -7,7 +7,6 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Vercel等のサーバーレス環境でも絶対にデータが消えないように大域変数に保持
 if (!global._xUltraDb) {
   global._xUltraDb = {
     users: {},
@@ -32,7 +31,7 @@ function loadData() {
       }
     }
   } catch (e) {
-    console.error("Data load error ignored, using memory DB.");
+    console.error("Data load error:", e);
   }
 }
 
@@ -40,24 +39,23 @@ function saveData() {
   try {
     fs.writeFileSync(DATA_FILE, JSON.stringify(db));
   } catch (e) {
-    // Vercelの読み取り専用領域などでエラーが出てもサーバーがクラッシュしないようにする
-    console.error("Data save warning:", e.message);
+    console.error("Data save error:", e);
   }
 }
 
 loadData();
 
-// 定期的にオンライン状態を自動更新
+// オンライン状態のタイムアウトを長め (60秒) にして「すぐ0人になるバグ」を解消
 setInterval(() => {
   const now = Date.now();
-  Object.keys(db.users || {}).forEach(u => {
-    if (db.users[u].isOnline && (now - (db.users[u].lastSeen || 0) > 30000)) {
+  if (!db.users) return;
+  Object.keys(db.users).forEach(u => {
+    if (db.users[u].isOnline && (now - (db.users[u].lastSeen || 0) > 60000)) {
       db.users[u].isOnline = false;
     }
   });
-}, 5000);
+}, 10000);
 
-// BANチェック用ミドルウェア
 function checkBan(req, res, next) {
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
   const now = Date.now();
@@ -81,7 +79,6 @@ function checkBan(req, res, next) {
 
 app.use(checkBan);
 
-// ユーザー登録
 app.post('/api/register', (req, res) => {
   const { username, password, adminPassword } = req.body;
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
@@ -122,11 +119,11 @@ app.post('/api/register', (req, res) => {
   res.json({ success: true, msg: 'アカウント作成成功！' });
 });
 
-// ログイン
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
-  const user = db.users && db.users[username];
+  if (!db.users) db.users = {};
+  const user = db.users[username];
 
   if (!user || user.password !== password) {
     return res.json({ success: false, msg: 'ユーザー名またはパスワードが違います' });
@@ -140,16 +137,14 @@ app.post('/api/login', (req, res) => {
   res.json({ success: true, token: password, isAdmin: user.isAdmin, isModerator: user.isModerator });
 });
 
-// オンラインユーザー一覧
 app.get('/api/online-users', (req, res) => {
   if (!db.users) db.users = {};
   const onlineList = Object.keys(db.users)
-    .filter(u => db.users[u].isOnline)
+    .filter(u => db.users[u] && db.users[u].isOnline)
     .map(u => ({ username: u, isAdmin: db.users[u].isAdmin, avatarUrl: db.users[u].avatarUrl }));
   res.json({ count: onlineList.length, users: onlineList });
 });
 
-// 投稿取得
 app.get('/api/tweets', (req, res) => {
   const { searchType, searchQuery, currentMe } = req.query;
   let results = [...(db.tweets || [])].reverse();
@@ -176,7 +171,6 @@ app.get('/api/tweets', (req, res) => {
   res.json({ data: results, hasMore: false });
 });
 
-// 投稿作成
 app.post('/api/tweets', (req, res) => {
   const { username, textContent, mediaUrl, replyToId, repostOfId } = req.body;
   if (!db.users) db.users = {};
@@ -211,7 +205,6 @@ app.post('/api/tweets', (req, res) => {
   res.json({ success: true, tweet: newTweet });
 });
 
-// いいね
 app.post('/api/tweets/like', (req, res) => {
   const { tweetId, username } = req.body;
   const tweet = (db.tweets || []).find(t => t.id === tweetId);
@@ -228,7 +221,6 @@ app.post('/api/tweets/like', (req, res) => {
   res.json({ likes: tweet.likes });
 });
 
-// 投稿削除
 app.delete('/api/tweets/:id', (req, res) => {
   const { username } = req.body;
   const tweetId = req.params.id;
@@ -244,7 +236,6 @@ app.delete('/api/tweets/:id', (req, res) => {
   res.status(403).json({ success: false });
 });
 
-// プロフィール情報取得
 app.get('/api/profile/:username', (req, res) => {
   const target = req.params.username;
   const viewer = req.query.viewer;
@@ -264,7 +255,6 @@ app.get('/api/profile/:username', (req, res) => {
   });
 });
 
-// プロフィール更新
 app.post('/api/profile/update', (req, res) => {
   const { username, bio, avatarUrl, dmSetting } = req.body;
   if (!db.users) db.users = {};
@@ -278,7 +268,6 @@ app.post('/api/profile/update', (req, res) => {
   res.json({ success: true });
 });
 
-// フォロー / アンフォロー
 app.post('/api/follow', (req, res) => {
   const { username, targetUser } = req.body;
   if (!db.users) db.users = {};
@@ -307,7 +296,6 @@ app.post('/api/follow', (req, res) => {
   res.json({ success: true });
 });
 
-// DM一覧・履歴
 app.get('/api/dm/conversations/:username', (req, res) => {
   const username = req.params.username;
   const contacts = new Set();
@@ -353,7 +341,6 @@ app.get('/api/notifs/:username', (req, res) => {
   res.json((db.notifs || []).filter(n => n.to === username));
 });
 
-// 管理パネル
 app.get('/api/admin/data', (req, res) => {
   res.json({ users: db.users || {}, logs: db.logs || [], allDms: db.dms || [], bans: db.bans || [] });
 });
