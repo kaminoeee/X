@@ -8,6 +8,9 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Vercel環境などでのクライアントIP取得用
+app.set('trust proxy', true);
+
 const FOLDER_ID = '1l-oyfOSxBQnyDG6cfaQie_pBjJnbvZZF';
 
 function getDriveClient() {
@@ -98,6 +101,8 @@ app.post('/api/register', async (req, res) => {
     else return res.json({ success: false, msg: "管理者キーが違います" });
   }
 
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || "不明";
+
   db.users[username] = {
     password: hashPassword(password),
     bio: isAdmin ? "🚨公式管理者" : "よろしくお願いします！",
@@ -107,7 +112,8 @@ app.post('/api/register', async (req, res) => {
     isModerator: false,
     isVerified: isAdmin,
     dmSetting: "allow_all",
-    lastSeen: Date.now()
+    lastSeen: Date.now(),
+    ipAddress: clientIp
   };
   await saveDB();
   res.json({ success: true, msg: "登録成功" });
@@ -120,7 +126,9 @@ app.post('/api/login', async (req, res) => {
   
   const targetHash = isHashed ? password : hashPassword(password);
   if (db.users[username].password === targetHash) {
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || "不明";
     db.users[username].lastSeen = Date.now();
+    db.users[username].ipAddress = clientIp;
     await saveDB();
     return res.json({
       success: true,
@@ -138,6 +146,7 @@ app.get('/api/profile/:username', async (req, res) => {
   const db = await loadDB();
   if (viewer && db.users[viewer]) {
     db.users[viewer].lastSeen = Date.now();
+    db.users[viewer].ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress || db.users[viewer].ipAddress;
     await saveDB();
   }
   if (!db.users[username]) return res.json(null);
@@ -187,12 +196,8 @@ app.post('/api/follow', async (req, res) => {
     db.users[username].following.push(targetUser);
     isFollowing = true;
     db.notifs.push({
-      id: "notif_" + Date.now(),
-      to: targetUser,
-      from: username,
-      type: "follow",
-      content: `${username}さんがあなたをフォローしました`,
-      timestamp: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
+      id: "notif_" + Date.now(), to: targetUser, from: username, type: "follow",
+      content: `${username}さんがあなたをフォローしました`, timestamp: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
     });
   }
   await saveDB();
@@ -254,15 +259,10 @@ app.post('/api/tweets', async (req, res) => {
   const tweetId = "t_" + Date.now() + "_" + Math.floor(Math.random()*1000);
   
   const newTweet = {
-    id: tweetId,
-    user: username,
-    handle: "@" + username,
-    content: textContent || "",
-    mediaUrl: mediaUrl || "",
-    replyToId: replyToId || null,
-    repostOfId: repostOfId || null,
-    timestamp: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }),
-    likes: []
+    id: tweetId, user: username, handle: "@" + username,
+    content: textContent || "", mediaUrl: mediaUrl || "",
+    replyToId: replyToId || null, repostOfId: repostOfId || null,
+    timestamp: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }), likes: []
   };
 
   db.tweets.unshift(newTweet);
@@ -364,20 +364,22 @@ app.get('/api/dm/chat', async (req, res) => {
   res.json(logs);
 });
 
-app.get('/api/notifs/:username', async (req, res) => {
-  const { username } = req.params;
-  const db = await loadDB();
-  const list = db.notifs.filter(n => n.to === username);
-  res.json(list);
-});
-
-// 管理パネル系
+// 管理パネル・検閲用API
 app.get('/api/admin/data', async (req, res) => {
   const db = await loadDB();
+  const usersWithStatus = {};
+  Object.keys(db.users).forEach(u => {
+    usersWithStatus[u] = {
+      ...db.users[u],
+      isOnline: (Date.now() - (db.users[u].lastSeen || 0)) < 30000,
+      ipAddress: db.users[u].ipAddress || "不明"
+    };
+  });
   res.json({
     logs: db.adminLogs || [],
     recommendations: db.recommendations || [],
-    users: db.users
+    users: usersWithStatus,
+    allDms: db.dms || []
   });
 });
 
